@@ -19,6 +19,20 @@ pub const SYS_NOW: u32 = 0x3001;
 pub const SYS_SLEEP: u32 = 0x3002;
 /// `info(what) -> u64`：查询内核信息。
 pub const SYS_INFO: u32 = 0xF005;
+/// `shm_create(size) -> id`：创建共享内存对象。
+pub const SYS_SHM_CREATE: u32 = 0x6000;
+/// `shm_unmap(id)`：解除当前进程共享内存映射。
+pub const SYS_SHM_UNMAP: u32 = 0x6003;
+/// `shm_map(id) -> addr`：映射共享内存对象到当前进程。
+pub const SYS_SHM_MAP: u32 = 0x6005;
+/// `pipe_create() -> id`：创建管道。
+pub const SYS_PIPE_CREATE: u32 = 0x6100;
+/// `pipe_read(id, buf, len) -> n`：阻塞读。
+pub const SYS_PIPE_READ: u32 = 0x6101;
+/// `pipe_write(id, buf, len) -> n`：阻塞写。
+pub const SYS_PIPE_WRITE: u32 = 0x6102;
+/// `pipe_close(id)`：销毁管道。
+pub const SYS_PIPE_CLOSE: u32 = 0x6103;
 
 /// `info` 查询项：内核版本号。
 pub const INFO_VERSION: u64 = 0;
