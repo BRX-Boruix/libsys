@@ -1,7 +1,13 @@
 //! 进程（PROCESS 域）薄封装。
 
 use crate::error::Error;
-use crate::nr::{SYS_EXIT, SYS_YIELD};
+use crate::nr::{SYS_EXEC, SYS_EXIT, SYS_YIELD};
+
+/// `exec(prog)`：加载内核嵌入的用户程序（`prog` 为嵌入池索引，如
+/// `SHELL`）为新进程（PID 2 等）并运行，返回新进程 pid。
+pub fn exec(prog: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_EXEC, [prog, 0, 0, 0, 0, 0])
+}
 
 /// `exit(code)`：终止当前进程。永不返回。
 pub fn exit(code: i32) -> ! {

@@ -38,10 +38,10 @@ mod system;
 mod time;
 
 pub use error::Error;
-pub use io::{write, STDERR, STDOUT};
+pub use io::{read, write, STDERR, STDIN, STDOUT};
 pub use ipc::{pipe_close, pipe_create, pipe_read, pipe_write, shm_create, shm_map, shm_unmap};
 pub use mem::{brk, mmap};
-pub use process::{exit, yield_now};
+pub use process::{exec, exit, yield_now};
 pub use system::info;
 pub use time::{now, sleep};
 
