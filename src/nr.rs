@@ -1,0 +1,26 @@
+//! 系统调用号定义——与内核 `kernel/src/syscall.rs` 对齐（ADR-003）。
+//!
+//! 编码 `(domain << 8) | op`：高字节资源域 + 低字节统一操作码。
+//! 用户态通过 `int 0x80` 触发，参数走 `rax=nr` + `rdi/rsi/rdx/r10/r8/r9`。
+
+/// `write(fd, buf, len) -> n`：把缓冲写到 fd（1=stdout，2=stderr）。
+pub const SYS_WRITE: u32 = 0x2002;
+/// `mmap(size) -> addr`：在当前进程预留一段按需分页区。
+pub const SYS_MMAP: u32 = 0x1000;
+/// `brk(new) -> break`：调整/查询堆断点（0 = 查询）。
+pub const SYS_BRK: u32 = 0x1005;
+/// `exit(code) -> !`：终止当前进程。
+pub const SYS_EXIT: u32 = 0x0003;
+/// `now() -> ns`：单调时钟（纳秒）。
+pub const SYS_NOW: u32 = 0x3001;
+/// `sleep(ns)`：忙等/挂起睡眠。
+pub const SYS_SLEEP: u32 = 0x3002;
+/// `info(what) -> u64`：查询内核信息。
+pub const SYS_INFO: u32 = 0xF005;
+
+/// `info` 查询项：内核版本号。
+pub const INFO_VERSION: u64 = 0;
+/// `info` 查询项：启动以来毫秒数。
+pub const INFO_BOOT_MS: u64 = 1;
+/// `info` 查询项：CPU 数。
+pub const INFO_CPU_COUNT: u64 = 2;
