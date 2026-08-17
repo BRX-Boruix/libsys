@@ -26,6 +26,7 @@
 
 pub mod error;
 pub mod nr;
+pub mod signal;
 pub mod syscall;
 
 mod io;
@@ -38,7 +39,7 @@ mod time;
 pub use error::Error;
 pub use io::{write, STDERR, STDOUT};
 pub use mem::{brk, mmap};
-pub use process::exit;
+pub use process::{exit, yield_now};
 pub use system::info;
 pub use time::{now, sleep};
 

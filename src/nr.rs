@@ -11,6 +11,8 @@ pub const SYS_MMAP: u32 = 0x1000;
 pub const SYS_BRK: u32 = 0x1005;
 /// `exit(code) -> !`：终止当前进程。
 pub const SYS_EXIT: u32 = 0x0003;
+/// `yield() -> 0`：当前进程主动让出 CPU（切到下一个就绪进程）。
+pub const SYS_YIELD: u32 = 0x0004;
 /// `now() -> ns`：单调时钟（纳秒）。
 pub const SYS_NOW: u32 = 0x3001;
 /// `sleep(ns)`：忙等/挂起睡眠。
