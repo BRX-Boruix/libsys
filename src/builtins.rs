@@ -13,56 +13,64 @@
 /// `memcpy(dest, src, n)`：非重叠拷贝（Rust `copy_from_slice` 走此路径）。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
-    let mut i = 0;
-    while i < n {
-        *dest.add(i) = *src.add(i);
-        i += 1;
-    }
-    dest
-}
-
-/// `memmove(dest, src, n)`：支持重叠的拷贝（`copy` 可能走此路径）。
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
-    if (dest as usize) < (src as usize) {
+    unsafe {
         let mut i = 0;
         while i < n {
             *dest.add(i) = *src.add(i);
             i += 1;
         }
-    } else {
-        let mut i = n;
-        while i > 0 {
-            i -= 1;
-            *dest.add(i) = *src.add(i);
-        }
+        dest
     }
-    dest
+}
+
+/// `memmove(dest, src, n)`：支持重叠的拷贝（`copy` 可能走此路径）。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+    unsafe {
+        if (dest as usize) < (src as usize) {
+            let mut i = 0;
+            while i < n {
+                *dest.add(i) = *src.add(i);
+                i += 1;
+            }
+        } else {
+            let mut i = n;
+            while i > 0 {
+                i -= 1;
+                *dest.add(i) = *src.add(i);
+            }
+        }
+        dest
+    }
 }
 
 /// `memset(dest, c, n)`：按字节填充（`write_bytes` 走此路径）。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn memset(dest: *mut u8, c: i32, n: usize) -> *mut u8 {
-    let c = (c & 0xff) as u8;
-    let mut i = 0;
-    while i < n {
-        *dest.add(i) = c;
-        i += 1;
+    unsafe {
+        let c = (c & 0xff) as u8;
+        let mut i = 0;
+        while i < n {
+            *dest.add(i) = c;
+            i += 1;
+        }
+        dest
     }
-    dest
 }
 
 /// `memcmp(a, b, n)`：逐字节比较，返回首处差值的符号（相等返回 0）。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn memcmp(a: *const u8, b: *const u8, n: usize) -> i32 {
-    let mut i = 0;
-    while i < n {
-        let va = *a.add(i);
-        let vb = *b.add(i);
-        if va != vb {
-            return (va as i32) - (vb as i32);
+    unsafe {
+        let mut i = 0;
+        while i < n {
+            let va = *a.add(i);
+            let vb = *b.add(i);
+            if va != vb {
+                return (va as i32) - (vb as i32);
+            }
+            i += 1;
         }
-        i += 1;
+        0
     }
-    0
 }
