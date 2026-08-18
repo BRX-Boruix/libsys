@@ -47,3 +47,7 @@ pub const INFO_VERSION: u64 = 0;
 pub const INFO_BOOT_MS: u64 = 1;
 /// `info` 查询项：CPU 数。
 pub const INFO_CPU_COUNT: u64 = 2;
+/// `ps(buf, cap) -> count`：枚举存活进程快照（每条 8 字节：pid:u32 + state:u8 + pad）。
+pub const SYS_PS: u32 = 0xF010;
+/// `kill(pid, sig) -> 0`：向进程发送信号（9=SIGKILL / 15=SIGTERM 终止；0=仅校验存在）。
+pub const SYS_KILL: u32 = 0xF020;

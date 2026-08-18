@@ -31,6 +31,22 @@ pub enum Error {
 }
 
 impl Error {
+    /// 映射到 errno 数值（与内核 `Error::to_errno` 对齐，ADR-010）。
+    pub fn to_errno(self) -> i32 {
+        match self {
+            Error::OutOfMemory => 12,   // ENOMEM
+            Error::InvalidParam => 22,  // EINVAL
+            Error::OutOfRange => 34,    // ERANGE
+            Error::NotFound => 2,       // ENOENT
+            Error::AlreadyExists => 17, // EEXIST
+            Error::NotSupported => 95,  // ENOTSUP
+            Error::WouldBlock => 11,    // EAGAIN
+            Error::NoSpace => 28,       // ENOSPC
+            Error::Io => 5,             // EIO
+            Error::Unknown(e) => e,
+        }
+    }
+
     /// 从 errno 数值映射回错误码（与内核 `Error::to_errno` 互逆）。
     pub fn from_errno(e: i32) -> Self {
         match e {

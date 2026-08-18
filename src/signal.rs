@@ -13,3 +13,18 @@ pub const SIGFPE: u32 = 8;
 pub const SIGSEGV: u32 = 11;
 /// SIGTERM：兜底终止。
 pub const SIGTERM: u32 = 15;
+/// SIGKILL：强制终止（不可捕获）。
+pub const SIGKILL: u32 = 9;
+
+/// 信号号 → 名称（打印用）。
+pub fn name(sig: u32) -> &'static str {
+    match sig {
+        SIGKILL => "SIGKILL",
+        SIGTERM => "SIGTERM",
+        0 => "0",
+        _ => "?",
+    }
+}
+
+/// 已知信号列表（供 `kill -l` 列出）。
+pub const LIST: &[(u32, &str)] = &[(SIGKILL, "SIGKILL"), (SIGTERM, "SIGTERM")];

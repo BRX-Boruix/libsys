@@ -29,6 +29,11 @@ pub mod nr;
 pub mod signal;
 pub mod syscall;
 
+// 裸机用户程序所需的 `memcpy`/`memset`/`memmove`/`memcmp` 替身
+// （`x86_64-unknown-none` 不自动链接 compiler-builtins）。非 pub 即可，符号经
+// `#[no_mangle]` 进入最终二进制，被 `copy_from_slice` 等 lowering 出的调用引用。
+mod builtins;
+
 mod io;
 mod ipc;
 mod mem;
@@ -41,7 +46,7 @@ pub use error::Error;
 pub use io::{read, write, STDERR, STDIN, STDOUT};
 pub use ipc::{pipe_close, pipe_create, pipe_read, pipe_write, shm_create, shm_map, shm_unmap};
 pub use mem::{brk, mmap};
-pub use process::{exec, exit, yield_now};
+pub use process::{exec, exit, kill, ps, PsEntry, yield_now};
 pub use system::info;
 pub use time::{now, sleep};
 
