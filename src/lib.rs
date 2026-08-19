@@ -32,6 +32,7 @@ pub mod syscall;
 // 裸机用户程序所需的 `memcpy`/`memset`/`memmove`/`memcmp` 替身
 // （`x86_64-unknown-none` 不自动链接 compiler-builtins）。非 pub 即可，符号经
 // `#[no_mangle]` 进入最终二进制，被 `copy_from_slice` 等 lowering 出的调用引用。
+mod allocator;
 mod builtins;
 
 mod io;
