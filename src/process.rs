@@ -34,6 +34,14 @@ pub fn ps(buf: &mut [PsEntry]) -> Result<usize, Error> {
     Ok(n as usize)
 }
 
+/// 动态获取当前所有存活进程的快照列表（自动扩容）。
+pub fn ps_list() -> Result<alloc::vec::Vec<PsEntry>, Error> {
+    let mut entries = alloc::vec![PsEntry { pid: 0, state: 0, _pad: [0; 3] }; 32];
+    let count = ps(&mut entries)?;
+    entries.truncate(count);
+    Ok(entries)
+}
+
 /// `kill(pid, sig) -> 0`：向进程发送信号（`sig` 见 `crate::signal`）。
 pub fn kill(pid: u64, sig: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_KILL, [pid, sig, 0, 0, 0, 0])
