@@ -9,7 +9,7 @@
 //!
 //! # 用户程序约定（ADR-003 纯 spawn，无 fork）
 //!
-//! ```no_run
+//! ```ignore
 //! #![no_std]
 //! #![no_main]
 //!
@@ -27,14 +27,14 @@
 extern crate alloc;
 
 pub mod error;
+pub mod json;
 pub mod nr;
 pub mod signal;
 pub mod syscall;
 
-// 裸机用户程序所需的 `memcpy`/`memset`/`memmove`/`memcmp` 替身
-// （`x86_64-unknown-none` 不自动链接 compiler-builtins）。非 pub 即可，符号经
-// `#[no_mangle]` 进入最终二进制，被 `copy_from_slice` 等 lowering 出的调用引用。
+#[cfg(all(not(test), target_os = "none"))]
 mod allocator;
+#[cfg(all(not(test), target_os = "none"))]
 mod builtins;
 
 mod io;
@@ -60,6 +60,7 @@ pub use time::{now, sleep};
 use core::panic::PanicInfo;
 
 /// 用户态 panic 处理：打印提示并退出（code=101）。
+#[cfg(all(not(test), target_os = "none"))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     let _ = write(1, b"\n[libsys] userspace panic: ");
@@ -88,5 +89,6 @@ fn panic(info: &PanicInfo) -> ! {
         }
     }
     let _ = write(1, b"\n");
-    crate::process::exit(101)
+    let _ = exit(101);
+    loop {}
 }

@@ -19,6 +19,7 @@ extern "C" fn __libsys_exit(code: u64) -> ! {
     crate::process::exit(code as i32);
 }
 
+#[cfg(all(not(test), target_os = "none"))]
 global_asm!(
     r#"
 .section .text
