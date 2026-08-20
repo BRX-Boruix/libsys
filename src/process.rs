@@ -1,11 +1,11 @@
-//! 进程（PROCESS 域）薄封装。
+//! 任务与进程（TASK 域）薄封装（遵循 ADR-014）。
 
 use crate::error::Error;
-use crate::nr::{SYS_EXEC, SYS_EXIT, SYS_KILL, SYS_PS, SYS_YIELD};
+use crate::nr::{SYS_TASK_EXIT, SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT};
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
 pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
-    crate::syscall::call(SYS_EXEC, [prog, cmd.as_ptr() as u64, cmd.len() as u64, 0, 0, 0])
+    crate::syscall::call(SYS_TASK_SPAWN, [prog, cmd.as_ptr() as u64, cmd.len() as u64, 0, 0, 0])
 }
 
 /// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/binaries/shell.elf`）加载并运行新进程。
@@ -18,7 +18,7 @@ pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
     null_terminated[path.len()] = 0;
 
     crate::syscall::call(
-        SYS_EXEC,
+        SYS_TASK_SPAWN,
         [
             null_terminated.as_ptr() as u64,
             cmd.as_ptr() as u64,
@@ -30,7 +30,7 @@ pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
     )
 }
 
-/// 进程快照条目（与内核 `ps_snapshot` 布局一致：pid:u32 + state:u8 + pad）。
+/// 进程快照条目。
 #[repr(C, align(8))]
 #[derive(Clone, Copy)]
 pub struct PsEntry {
@@ -42,13 +42,48 @@ pub struct PsEntry {
     pub _pad: [u8; 3],
 }
 
-/// `ps(buf) -> count`：枚举存活进程写入 `buf`，返回写入条目数。
+/// `ps(buf) -> count`：从 `/processes/list` VFS 虚拟文件读取并解析存活进程快照。
 pub fn ps(buf: &mut [PsEntry]) -> Result<usize, Error> {
-    let n = crate::syscall::call(
-        SYS_PS,
-        [buf.as_mut_ptr() as u64, (buf.len() * 8) as u64, 0, 0, 0, 0],
-    )?;
-    Ok(n as usize)
+    let data = crate::io::read_to_end("/processes/list")?;
+    let text = core::str::from_utf8(&data).map_err(|_| Error::InvalidParam)?;
+    let mut count = 0;
+
+    // 解析 JSON 列表 [{"pid":1,"state":"Running",...}]
+    let trimmed = text.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        let content = &trimmed[1..trimmed.len() - 1];
+        for obj_str in content.split("},") {
+            if count >= buf.len() {
+                break;
+            }
+            let s = obj_str.trim().trim_start_matches('{').trim_end_matches('}');
+            let mut pid = 0u32;
+            let mut state = 1u8; // Ready
+
+            for field in s.split(',') {
+                let mut kv = field.split(':');
+                if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+                    let k = k.trim().trim_matches('"');
+                    let v = v.trim().trim_matches('"');
+                    match k {
+                        "pid" => pid = v.parse::<u32>().unwrap_or(0),
+                        "state" => match v {
+                            "Ready" => state = 1,
+                            "Running" => state = 2,
+                            "Blocked" => state = 3,
+                            _ => state = 0,
+                        },
+                        _ => {}
+                    }
+                }
+            }
+            if pid > 0 {
+                buf[count] = PsEntry { pid, state, _pad: [0; 3] };
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
 }
 
 /// 动态获取当前所有存活进程的快照列表（自动扩容）。
@@ -59,24 +94,20 @@ pub fn ps_list() -> Result<alloc::vec::Vec<PsEntry>, Error> {
     Ok(entries)
 }
 
-/// `kill(pid, sig) -> 0`：向进程发送信号（`sig` 见 `crate::signal`）。
+/// `kill(pid, sig) -> 0`：向进程发送信号（统一走 SYS_TASK_SIGNAL）。
 pub fn kill(pid: u64, sig: u64) -> Result<u64, Error> {
-    crate::syscall::call(SYS_KILL, [pid, sig, 0, 0, 0, 0])
+    crate::syscall::call(SYS_TASK_SIGNAL, [pid, sig, 0, 0, 0, 0])
 }
 
 /// `exit(code)`：终止当前进程。永不返回。
 pub fn exit(code: i32) -> ! {
-    let _ = crate::syscall::invoke(SYS_EXIT, code as u64, 0, 0, 0, 0, 0);
-    // 内核 `exit` 不返回；此处兜底自旋（防御性，正常不可达）。
+    let _ = crate::syscall::invoke(SYS_TASK_EXIT, code as u64, 0, 0, 0, 0, 0);
     loop {
         core::hint::spin_loop();
     }
 }
 
-/// `yield_now()`：当前进程主动让出 CPU（切到下一个就绪进程）。
-///
-/// 仅当前进程一个就绪时，内核不切换，立即返回 `Ok(())`；否则让出后待
-/// 下次被调度时返回。
+/// `yield_now()`：当前进程主动让出 CPU（走 SYS_TASK_WAIT(0, 0)）。
 pub fn yield_now() -> Result<(), Error> {
-    crate::syscall::call(SYS_YIELD, [0, 0, 0, 0, 0, 0]).map(|_| ())
+    crate::syscall::call(SYS_TASK_WAIT, [0, 0, 0, 0, 0, 0]).map(|_| ())
 }

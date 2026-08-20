@@ -117,14 +117,6 @@ impl Permissions {
     }
 }
 
-/// Seek 游标基准。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SeekWhence {
-    Set = 0,
-    Current = 1,
-    End = 2,
-}
-
 /// 目录项条目。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirEntry {
@@ -133,14 +125,14 @@ pub struct DirEntry {
     pub size: u64,
 }
 
-/// `open(path, flags, perm)`：打开或创建文件，返回文件描述符。
+/// `open(path, flags, perm)`：打开或创建文件/流，返回句柄（fd）。
 pub fn open(path: &str, flags: OpenFlags, perm: Permissions) -> Result<u64, Error> {
     if path.len() >= 256 {
         let mut null_terminated = Vec::with_capacity(path.len() + 1);
         null_terminated.extend_from_slice(path.as_bytes());
         null_terminated.push(0);
         return crate::syscall::call(
-            SYS_OPEN,
+            SYS_STREAM_CREATE,
             [
                 null_terminated.as_ptr() as u64,
                 flags.to_bits() as u64,
@@ -156,7 +148,7 @@ pub fn open(path: &str, flags: OpenFlags, perm: Permissions) -> Result<u64, Erro
     buf[path.len()] = 0;
 
     crate::syscall::call(
-        SYS_OPEN,
+        SYS_STREAM_CREATE,
         [
             buf.as_ptr() as u64,
             flags.to_bits() as u64,
@@ -168,53 +160,45 @@ pub fn open(path: &str, flags: OpenFlags, perm: Permissions) -> Result<u64, Erro
     )
 }
 
-/// `close(fd)`：关闭文件描述符。
+/// `close(fd)`：关闭文件/流句柄。
 pub fn close(fd: u64) -> Result<(), Error> {
-    crate::syscall::call(SYS_CLOSE, [fd, 0, 0, 0, 0, 0]).map(|_| ())
+    crate::syscall::call(SYS_STREAM_CLOSE, [fd, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
-/// `read(fd, buf)`：从 fd 读字节到缓冲，返回实际读到的字节数。
+/// `read(fd, buf)`：从 fd 读字节到缓冲（流式自增读），返回实际读到的字节数。
 pub fn read(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
     crate::syscall::call(
-        SYS_READ,
-        [fd, buf.as_mut_ptr() as u64, buf.len() as u64, 0, 0, 0],
+        SYS_STREAM_READ,
+        [fd, buf.as_mut_ptr() as u64, buf.len() as u64, u64::MAX, 0, 0],
     )
     .map(|n| n as usize)
 }
 
-/// `write(fd, buf)`：把字节缓冲写到 fd，返回写入字节数。
+/// `write(fd, buf)`：把字节缓冲写到 fd（流式自增写），返回写入字节数。
 pub fn write(fd: u64, buf: &[u8]) -> Result<usize, Error> {
     crate::syscall::call(
-        SYS_WRITE,
-        [fd, buf.as_ptr() as u64, buf.len() as u64, 0, 0, 0],
+        SYS_STREAM_WRITE,
+        [fd, buf.as_ptr() as u64, buf.len() as u64, u64::MAX, 0, 0],
     )
     .map(|n| n as usize)
 }
 
-/// `pread(fd, buf, offset)`：显式无状态定位读。
+/// `pread(fd, buf, offset)`：显式无状态定位读（统一走 SYS_STREAM_READ）。
 pub fn pread(fd: u64, buf: &mut [u8], offset: u64) -> Result<usize, Error> {
     crate::syscall::call(
-        SYS_PREAD,
+        SYS_STREAM_READ,
         [fd, buf.as_mut_ptr() as u64, buf.len() as u64, offset, 0, 0],
     )
     .map(|n| n as usize)
 }
 
-/// `pwrite(fd, buf, offset)`：显式无状态定位写。
+/// `pwrite(fd, buf, offset)`：显式无状态定位写（统一走 SYS_STREAM_WRITE）。
 pub fn pwrite(fd: u64, buf: &[u8], offset: u64) -> Result<usize, Error> {
     crate::syscall::call(
-        SYS_PWRITE,
+        SYS_STREAM_WRITE,
         [fd, buf.as_ptr() as u64, buf.len() as u64, offset, 0, 0],
     )
     .map(|n| n as usize)
-}
-
-/// `seek(fd, offset, whence)`：调整文件句柄游标，返回新的绝对偏移量。
-pub fn seek(fd: u64, offset: i64, whence: SeekWhence) -> Result<u64, Error> {
-    crate::syscall::call(
-        SYS_SEEK,
-        [fd, offset as u64, whence as u64, 0, 0, 0],
-    )
 }
 
 /// `mkdir(path, perm)`：创建目录。
@@ -224,7 +208,7 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
         null_terminated.extend_from_slice(path.as_bytes());
         null_terminated.push(0);
         return crate::syscall::call(
-            SYS_MKDIR,
+            SYS_ENTRY_CREATE,
             [null_terminated.as_ptr() as u64, perm.to_bits() as u64, 0, 0, 0, 0],
         ).map(|_| ());
     }
@@ -233,20 +217,20 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
     buf[path.len()] = 0;
 
     crate::syscall::call(
-        SYS_MKDIR,
+        SYS_ENTRY_CREATE,
         [buf.as_ptr() as u64, perm.to_bits() as u64, 0, 0, 0, 0],
     )
     .map(|_| ())
 }
 
-/// `unlink(path)`：删除文件或空目录。
+/// `unlink(path)`：删除文件或目录。
 pub fn unlink(path: &str) -> Result<(), Error> {
     if path.len() >= 256 {
         let mut null_terminated = Vec::with_capacity(path.len() + 1);
         null_terminated.extend_from_slice(path.as_bytes());
         null_terminated.push(0);
         return crate::syscall::call(
-            SYS_UNLINK,
+            SYS_ENTRY_DELETE,
             [null_terminated.as_ptr() as u64, 0, 0, 0, 0, 0],
         ).map(|_| ());
     }
@@ -255,15 +239,10 @@ pub fn unlink(path: &str) -> Result<(), Error> {
     buf[path.len()] = 0;
 
     crate::syscall::call(
-        SYS_UNLINK,
+        SYS_ENTRY_DELETE,
         [buf.as_ptr() as u64, 0, 0, 0, 0, 0],
     )
     .map(|_| ())
-}
-
-/// `flock(fd, op)`：顾问文件锁。
-pub fn flock(fd: u64, op: u32) -> Result<(), Error> {
-    crate::syscall::call(SYS_FLOCK, [fd, op as u64, 0, 0, 0, 0]).map(|_| ())
 }
 
 /// 高阶便捷函数：读取文件全部内容到 `Vec<u8>`。
@@ -285,7 +264,7 @@ pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
     Ok(data)
 }
 
-/// 高阶便捷函数：读取目录下的所有目录项。
+/// 高阶便捷函数：读取目录下的所有目录项（原生从 VFS JSON 解析）。
 pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     let mut null_terminated = [0u8; 256];
     if path.len() >= 255 {
@@ -294,14 +273,46 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     null_terminated[..path.len()].copy_from_slice(path.as_bytes());
     null_terminated[path.len()] = 0;
 
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 2048];
     let n = crate::syscall::call(
-        SYS_READDIR,
+        SYS_ENTRY_READ,
         [null_terminated.as_ptr() as u64, buf.as_mut_ptr() as u64, buf.len() as u64, 0, 0, 0],
     )? as usize;
 
     let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
     let mut entries = Vec::new();
+    
+    // 如果是 JSON 数组 [{"name":"...","type":"...","size":...}]
+    let trimmed = text.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        let content = &trimmed[1..trimmed.len() - 1];
+        for obj_str in content.split("},") {
+            let s = obj_str.trim().trim_start_matches('{').trim_end_matches('}');
+            let mut name = String::new();
+            let mut node_type = String::new();
+            let mut size = 0u64;
+
+            for field in s.split(',') {
+                let mut kv = field.split(':');
+                if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+                    let k = k.trim().trim_matches('"');
+                    let v = v.trim().trim_matches('"');
+                    match k {
+                        "name" => name = String::from(v),
+                        "type" => node_type = String::from(v),
+                        "size" => size = v.parse::<u64>().unwrap_or(0),
+                        _ => {}
+                    }
+                }
+            }
+            if !name.is_empty() {
+                entries.push(DirEntry { name, node_type, size });
+            }
+        }
+        return Ok(entries);
+    }
+
+    // 纯文本兼容
     for line in text.lines() {
         if line.is_empty() {
             continue;

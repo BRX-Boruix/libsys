@@ -47,8 +47,8 @@ mod time;
 
 pub use error::Error;
 pub use io::{
-    close, flock, mkdir, open, pread, pwrite, read, read_dir, read_to_end, seek, unlink, write,
-    DirEntry, OpenFlags, Permissions, SeekWhence, STDERR, STDIN, STDOUT,
+    close, mkdir, open, pread, pwrite, read, read_dir, read_to_end, unlink, write,
+    DirEntry, OpenFlags, Permissions, STDERR, STDIN, STDOUT,
 };
 pub use ipc::{pipe_close, pipe_create, pipe_read, pipe_write, shm_create, shm_map, shm_unmap};
 pub use mem::{brk, mmap};

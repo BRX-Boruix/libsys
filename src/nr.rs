@@ -1,71 +1,82 @@
-//! 系统调用号定义——与内核 `kernel/src/syscall.rs` 对齐（ADR-003）。
+//! 系统调用号定义——遵循 ADR-014 4x4 对象-动词正交架构与规范。
 //!
-//! 编码 `(domain << 8) | op`：高字节资源域 + 低字节统一操作码。
-//! 用户态通过 `int 0x80` 触发，参数走 `rax=nr` + `rdi/rsi/rdx/r10/r8/r9`。
+//! 编码统一采用 `(Resource << 4) | Verb`：
+//! - Resources: STREAM (0x10), MEMORY (0x20), TASK (0x30), VFS (0x40), DEVICE (0x50)
+//! - Verbs:     CREATE (0x01), READ (0x02), WRITE (0x03), DELETE (0x04)
+//!
+//! 用户态通过 `int 0x80` 触发，寄存器约定：`rax=nr`, `rdi/rsi/rdx/r10/r8/r9`。
 
-/// `open(path, flags, perm) -> fd`：打开或创建文件。
-pub const SYS_OPEN: u32 = 0x2000;
-/// `read(fd, buf, len) -> n`：从 fd 读字节到缓冲（0=stdin 键盘）。
-pub const SYS_READ: u32 = 0x2001;
-/// `write(fd, buf, len) -> n`：把缓冲写到 fd（1=stdout，2=stderr）。
-pub const SYS_WRITE: u32 = 0x2002;
-/// `close(fd) -> 0`：关闭文件描述符。
-pub const SYS_CLOSE: u32 = 0x2003;
-/// `seek(fd, offset, whence) -> new_offset`：调整文件偏移量。
-pub const SYS_SEEK: u32 = 0x2004;
-/// `readdir(path, buf, cap) -> n`：读取目录项列表。
-pub const SYS_READDIR: u32 = 0x2005;
-/// `mkdir(path, perm) -> 0`：创建目录。
-pub const SYS_MKDIR: u32 = 0x2006;
-/// `unlink(path) -> 0`：删除文件或空目录。
-pub const SYS_UNLINK: u32 = 0x2007;
-/// `pread(fd, buf, len, offset) -> n`：显式无状态读取。
-pub const SYS_PREAD: u32 = 0x2008;
-/// `pwrite(fd, buf, len, offset) -> n`：显式无状态写入。
-pub const SYS_PWRITE: u32 = 0x2009;
-/// `flock(fd, op) -> 0`：顾问文件锁。
-pub const SYS_FLOCK: u32 = 0x200A;
-/// `mmap(size) -> addr`：在当前进程预留一段按需分页区。
-pub const SYS_MMAP: u32 = 0x1000;
-/// `brk(new) -> break`：调整/查询堆断点（0 = 查询）。
-pub const SYS_BRK: u32 = 0x1005;
-/// `exec(prog) -> pid`：加载内核嵌入的用户程序（如 shell）为新进程并运行。
-pub const SYS_EXEC: u32 = 0x0000;
-/// `exit(code) -> !`：终止当前进程。
-pub const SYS_EXIT: u32 = 0x0003;
-/// `yield() -> 0`：当前进程主动让出 CPU（切到下一个就绪进程）。
-pub const SYS_YIELD: u32 = 0x0004;
-/// `now() -> ns`：单调时钟（纳秒）。
-pub const SYS_NOW: u32 = 0x3001;
-/// `sleep(ns)`：忙等/挂起睡眠。
-pub const SYS_SLEEP: u32 = 0x3002;
-/// `info(what) -> u64`：查询内核信息。
-pub const SYS_INFO: u32 = 0xF005;
-/// `shm_create(size) -> id`：创建共享内存对象。
-pub const SYS_SHM_CREATE: u32 = 0x6000;
-/// `shm_unmap(id)`：解除当前进程共享内存映射。
-pub const SYS_SHM_UNMAP: u32 = 0x6003;
-/// `shm_map(id) -> addr`：映射共享内存对象到当前进程。
-pub const SYS_SHM_MAP: u32 = 0x6005;
-/// `pipe_create() -> id`：创建管道。
-pub const SYS_PIPE_CREATE: u32 = 0x6100;
-/// `pipe_read(id, buf, len) -> n`：阻塞读。
-pub const SYS_PIPE_READ: u32 = 0x6101;
-/// `pipe_write(id, buf, len) -> n`：阻塞写。
-pub const SYS_PIPE_WRITE: u32 = 0x6102;
-/// `pipe_close(id)`：销毁管道。
-pub const SYS_PIPE_CLOSE: u32 = 0x6103;
+// ---------- 4 类资源域与 4 个动词 ----------
+
+pub mod domain {
+    pub const STREAM: u32 = 0x10;
+    pub const MEMORY: u32 = 0x20;
+    pub const TASK: u32 = 0x30;
+    pub const VFS: u32 = 0x40;
+    pub const DEVICE: u32 = 0x50;
+}
+
+pub mod op {
+    pub const CREATE: u32 = 0x01;
+    pub const READ: u32 = 0x02;
+    pub const WRITE: u32 = 0x03;
+    pub const DELETE: u32 = 0x04;
+}
+
+const fn nr(d: u32, o: u32) -> u32 {
+    d | o
+}
+
+// ---------- 1. STREAM Domain (0x10) ----------
+/// `stream_create(path_ptr, flags, mode) -> handle`：打开或创建流/文件。
+pub const SYS_STREAM_CREATE: u32 = nr(domain::STREAM, op::CREATE); // 0x11
+/// `stream_read(handle, buf_ptr, len, offset) -> n`：从流读字节（offset=u64::MAX 为流式读）。
+pub const SYS_STREAM_READ: u32 = nr(domain::STREAM, op::READ); // 0x12
+/// `stream_write(handle, buf_ptr, len, offset) -> n`：向流写字节（offset=u64::MAX 为流式写）。
+pub const SYS_STREAM_WRITE: u32 = nr(domain::STREAM, op::WRITE); // 0x13
+/// `stream_close(handle) -> 0`：关闭并释放流句柄。
+pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14
+
+// ---------- 2. MEMORY Domain (0x20) ----------
+/// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
+pub const SYS_MEMORY_MAP: u32 = nr(domain::MEMORY, op::CREATE); // 0x21
+/// `memory_query(addr, out_ptr) -> status`：查询地址属性与状态。
+pub const SYS_MEMORY_QUERY: u32 = nr(domain::MEMORY, op::READ); // 0x22
+/// `memory_grow(new_break) -> break`：调整进程堆边界（替代 brk）。
+pub const SYS_MEMORY_GROW: u32 = nr(domain::MEMORY, op::WRITE); // 0x23
+/// `memory_unmap(addr, size) -> 0`：解除虚存映射。
+pub const SYS_MEMORY_UNMAP: u32 = nr(domain::MEMORY, op::DELETE); // 0x24
+
+// ---------- 3. TASK Domain (0x30) ----------
+/// `task_spawn(path_ptr, args_ptr, args_len) -> pid`：加载 ELF 镜像为新进程执行。
+pub const SYS_TASK_SPAWN: u32 = nr(domain::TASK, op::CREATE); // 0x31
+/// `task_wait(target_pid, timeout_ns) -> status`：等待任务退出或睡眠/让出。
+pub const SYS_TASK_WAIT: u32 = nr(domain::TASK, op::READ); // 0x32
+/// `task_signal(target_pid, signal) -> 0`：向任务发送控制/终止信号。
+pub const SYS_TASK_SIGNAL: u32 = nr(domain::TASK, op::WRITE); // 0x33
+/// `task_exit(code) -> !`：终止当前任务。
+pub const SYS_TASK_EXIT: u32 = nr(domain::TASK, op::DELETE); // 0x34
+
+// ---------- 4. VFS Domain (0x40) ----------
+/// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。
+pub const SYS_ENTRY_CREATE: u32 = nr(domain::VFS, op::CREATE); // 0x41
+/// `entry_read(path_ptr, json_buf_ptr, cap) -> len`：读取目录项列表（直接填充 JSON）。
+pub const SYS_ENTRY_READ: u32 = nr(domain::VFS, op::READ); // 0x42
+/// `entry_update(path_ptr, new_path_ptr, flags) -> 0`：移动/重命名/修改元数据。
+pub const SYS_ENTRY_UPDATE: u32 = nr(domain::VFS, op::WRITE); // 0x43
+/// `entry_delete(path_ptr) -> 0`：删除节点（替代 unlink）。
+pub const SYS_ENTRY_DELETE: u32 = nr(domain::VFS, op::DELETE); // 0x44
+
+// ---------- 5. DEVICE Domain (0x50, UIO Sandboxing) ----------
+/// `driver_register(name_ptr, len) -> uio_id`：注册用户态驱动。
+pub const SYS_DRIVER_REGISTER: u32 = nr(domain::DEVICE, op::CREATE); // 0x51
+/// `driver_claim(uio_id, mmio_base, size) -> user_vaddr`：映射设备 MMIO。
+pub const SYS_DRIVER_CLAIM: u32 = nr(domain::DEVICE, op::WRITE); // 0x53
 
 /// `exec` 程序池索引：shell（PID 2）。
 pub const PROG_SHELL: u64 = 1;
 
-/// `info` 查询项：内核版本号。
+/// `info` 查询项常量（保留供系统信息查询使用）。
 pub const INFO_VERSION: u64 = 0;
-/// `info` 查询项：启动以来毫秒数。
 pub const INFO_BOOT_MS: u64 = 1;
-/// `info` 查询项：CPU 数。
 pub const INFO_CPU_COUNT: u64 = 2;
-/// `ps(buf, cap) -> count`：枚举存活进程快照（每条 8 字节：pid:u32 + state:u8 + pad）。
-pub const SYS_PS: u32 = 0xF010;
-/// `kill(pid, sig) -> 0`：向进程发送信号（9=SIGKILL / 15=SIGTERM 终止；0=仅校验存在）。
-pub const SYS_KILL: u32 = 0xF020;
