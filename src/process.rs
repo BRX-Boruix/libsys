@@ -3,14 +3,31 @@
 use crate::error::Error;
 use crate::nr::{SYS_EXEC, SYS_EXIT, SYS_KILL, SYS_PS, SYS_YIELD};
 
-/// `exec(prog, cmd)`：加载内核嵌入的用户程序（`prog` 为嵌入池索引，如
-/// `SHELL`）为新进程（PID 2 等）并运行，返回新进程 pid。
-///
-/// `cmd` 为可选命令行字节串（如 `b"echo hi"`）：非空时新进程以 `argc=1 /
-/// argv[0]=cmd` 启动（一次性命令模式），用于后台作业；为空（`&[]`）则按
-/// `argc=0` 正常启动（进入 REPL）。
+/// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
 pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
     crate::syscall::call(SYS_EXEC, [prog, cmd.as_ptr() as u64, cmd.len() as u64, 0, 0, 0])
+}
+
+/// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/binaries/shell.elf`）加载并运行新进程。
+pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
+    let mut null_terminated = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    null_terminated[..path.len()].copy_from_slice(path.as_bytes());
+    null_terminated[path.len()] = 0;
+
+    crate::syscall::call(
+        SYS_EXEC,
+        [
+            null_terminated.as_ptr() as u64,
+            cmd.as_ptr() as u64,
+            cmd.len() as u64,
+            0,
+            0,
+            0,
+        ],
+    )
 }
 
 /// 进程快照条目（与内核 `ps_snapshot` 布局一致：pid:u32 + state:u8 + pad）。
