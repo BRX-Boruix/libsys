@@ -46,10 +46,14 @@ mod system;
 mod time;
 
 pub use error::Error;
-pub use io::{read, write, STDERR, STDIN, STDOUT};
+pub use io::{
+    close, flock, mkdir, open, pread, pwrite, read, read_dir, read_to_end, seek, unlink, write,
+    DirEntry, OpenFlags, Permissions, SeekWhence, STDERR, STDIN, STDOUT,
+};
 pub use ipc::{pipe_close, pipe_create, pipe_read, pipe_write, shm_create, shm_map, shm_unmap};
 pub use mem::{brk, mmap};
 pub use process::{exec, exit, kill, ps, ps_list, PsEntry, yield_now};
+
 pub use system::info;
 pub use time::{now, sleep};
 
@@ -57,7 +61,32 @@ use core::panic::PanicInfo;
 
 /// 用户态 panic 处理：打印提示并退出（code=101）。
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    let _ = write(1, b"\n[libsys] userspace panic\n");
-    exit(101);
+fn panic(info: &PanicInfo) -> ! {
+    let _ = write(1, b"\n[libsys] userspace panic: ");
+    if let Some(loc) = info.location() {
+        let _ = write(1, loc.file().as_bytes());
+        let _ = write(1, b":");
+        let mut buf = [0u8; 10];
+        let mut n = loc.line();
+        let mut i = 0;
+        if n == 0 {
+            let _ = write(1, b"0");
+        } else {
+            let mut tmp = [0u8; 10];
+            while n > 0 {
+                tmp[i] = b'0' + (n % 10) as u8;
+                n /= 10;
+                i += 1;
+            }
+            let mut j = 0;
+            while i > 0 {
+                i -= 1;
+                buf[j] = tmp[i];
+                j += 1;
+            }
+            let _ = write(1, &buf[..j]);
+        }
+    }
+    let _ = write(1, b"\n");
+    crate::process::exit(101)
 }

@@ -3,10 +3,28 @@
 //! 编码 `(domain << 8) | op`：高字节资源域 + 低字节统一操作码。
 //! 用户态通过 `int 0x80` 触发，参数走 `rax=nr` + `rdi/rsi/rdx/r10/r8/r9`。
 
+/// `open(path, flags, perm) -> fd`：打开或创建文件。
+pub const SYS_OPEN: u32 = 0x2000;
 /// `read(fd, buf, len) -> n`：从 fd 读字节到缓冲（0=stdin 键盘）。
 pub const SYS_READ: u32 = 0x2001;
 /// `write(fd, buf, len) -> n`：把缓冲写到 fd（1=stdout，2=stderr）。
 pub const SYS_WRITE: u32 = 0x2002;
+/// `close(fd) -> 0`：关闭文件描述符。
+pub const SYS_CLOSE: u32 = 0x2003;
+/// `seek(fd, offset, whence) -> new_offset`：调整文件偏移量。
+pub const SYS_SEEK: u32 = 0x2004;
+/// `readdir(path, buf, cap) -> n`：读取目录项列表。
+pub const SYS_READDIR: u32 = 0x2005;
+/// `mkdir(path, perm) -> 0`：创建目录。
+pub const SYS_MKDIR: u32 = 0x2006;
+/// `unlink(path) -> 0`：删除文件或空目录。
+pub const SYS_UNLINK: u32 = 0x2007;
+/// `pread(fd, buf, len, offset) -> n`：显式无状态读取。
+pub const SYS_PREAD: u32 = 0x2008;
+/// `pwrite(fd, buf, len, offset) -> n`：显式无状态写入。
+pub const SYS_PWRITE: u32 = 0x2009;
+/// `flock(fd, op) -> 0`：顾问文件锁。
+pub const SYS_FLOCK: u32 = 0x200A;
 /// `mmap(size) -> addr`：在当前进程预留一段按需分页区。
 pub const SYS_MMAP: u32 = 0x1000;
 /// `brk(new) -> break`：调整/查询堆断点（0 = 查询）。

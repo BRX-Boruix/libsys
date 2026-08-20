@@ -116,8 +116,15 @@ fn grow_user_heap(heap: &mut Heap<32>, layout: &Layout) -> bool {
         return false;
     }
     let actual_grow = (new_brk - cur_brk) as usize;
-    unsafe {
-        heap.add_to_heap(cur_brk as usize, actual_grow);
+    // buddy_system_allocator 要求 start 对齐到至少 32 字节且大小大于 0
+    let start = cur_brk as usize;
+    let end = new_brk as usize;
+    if actual_grow >= 32 {
+        unsafe {
+            heap.add_to_heap(start, end);
+        }
+        true
+    } else {
+        false
     }
-    true
 }
