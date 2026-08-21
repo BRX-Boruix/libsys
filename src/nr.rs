@@ -27,12 +27,18 @@ const fn nr(d: u32, o: u32) -> u32 {
     d | o
 }
 
+/// STREAM read/write 的顺序 I/O 哨兵值。
+///
+/// 仅该值表示使用并推进句柄当前位置；`0` 与所有其他偏移均表示定位
+/// `pread`/`pwrite`，其中 `0` 是文件起始位置。
+pub const STREAM_OFFSET_CURRENT: u64 = u64::MAX;
+
 // ---------- 1. STREAM Domain (0x10) ----------
 /// `stream_create(path_ptr, flags, mode) -> handle`：打开或创建流/文件。
 pub const SYS_STREAM_CREATE: u32 = nr(domain::STREAM, op::CREATE); // 0x11
-/// `stream_read(handle, buf_ptr, len, offset) -> n`：从流读字节（offset=u64::MAX 为流式读）。
+/// `stream_read(handle, buf_ptr, len, offset) -> n`：仅 `offset=STREAM_OFFSET_CURRENT` 为顺序读；其余（含 0）为定位读。
 pub const SYS_STREAM_READ: u32 = nr(domain::STREAM, op::READ); // 0x12
-/// `stream_write(handle, buf_ptr, len, offset) -> n`：向流写字节（offset=u64::MAX 为流式写）。
+/// `stream_write(handle, buf_ptr, len, offset) -> n`：仅 `offset=STREAM_OFFSET_CURRENT` 为顺序写；其余（含 0）为定位写。
 pub const SYS_STREAM_WRITE: u32 = nr(domain::STREAM, op::WRITE); // 0x13
 /// `stream_close(handle) -> 0`：关闭并释放流句柄。
 pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14

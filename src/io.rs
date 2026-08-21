@@ -1,9 +1,9 @@
 //! 输入输出（IO 域）与 VFS 系统调用薄封装（ADR-011 / M6.2）。
 
-use alloc::string::String;
-use alloc::vec::Vec;
 use crate::error::Error;
 use crate::nr::*;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// 标准输入 / 标准输出 / 标准错误文件描述符。
 pub const STDIN: u64 = 0;
@@ -60,12 +60,24 @@ impl OpenFlags {
 
     pub const fn to_bits(self) -> u32 {
         let mut bits = 0;
-        if self.read { bits |= 1 << 0; }
-        if self.write { bits |= 1 << 1; }
-        if self.create { bits |= 1 << 2; }
-        if self.truncate { bits |= 1 << 3; }
-        if self.append { bits |= 1 << 4; }
-        if self.directory { bits |= 1 << 5; }
+        if self.read {
+            bits |= 1 << 0;
+        }
+        if self.write {
+            bits |= 1 << 1;
+        }
+        if self.create {
+            bits |= 1 << 2;
+        }
+        if self.truncate {
+            bits |= 1 << 3;
+        }
+        if self.append {
+            bits |= 1 << 4;
+        }
+        if self.directory {
+            bits |= 1 << 5;
+        }
         bits
     }
 }
@@ -109,10 +121,18 @@ impl Permissions {
 
     pub const fn to_bits(self) -> u32 {
         let mut bits = 0;
-        if self.readable { bits |= 1 << 0; }
-        if self.writable { bits |= 1 << 1; }
-        if self.executable { bits |= 1 << 2; }
-        if self.system_only { bits |= 1 << 3; }
+        if self.readable {
+            bits |= 1 << 0;
+        }
+        if self.writable {
+            bits |= 1 << 1;
+        }
+        if self.executable {
+            bits |= 1 << 2;
+        }
+        if self.system_only {
+            bits |= 1 << 3;
+        }
         bits
     }
 }
@@ -169,7 +189,14 @@ pub fn close(fd: u64) -> Result<(), Error> {
 pub fn read(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
     crate::syscall::call(
         SYS_STREAM_READ,
-        [fd, buf.as_mut_ptr() as u64, buf.len() as u64, u64::MAX, 0, 0],
+        [
+            fd,
+            buf.as_mut_ptr() as u64,
+            buf.len() as u64,
+            STREAM_OFFSET_CURRENT,
+            0,
+            0,
+        ],
     )
     .map(|n| n as usize)
 }
@@ -178,7 +205,14 @@ pub fn read(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
 pub fn write(fd: u64, buf: &[u8]) -> Result<usize, Error> {
     crate::syscall::call(
         SYS_STREAM_WRITE,
-        [fd, buf.as_ptr() as u64, buf.len() as u64, u64::MAX, 0, 0],
+        [
+            fd,
+            buf.as_ptr() as u64,
+            buf.len() as u64,
+            STREAM_OFFSET_CURRENT,
+            0,
+            0,
+        ],
     )
     .map(|n| n as usize)
 }
@@ -209,8 +243,16 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
         null_terminated.push(0);
         return crate::syscall::call(
             SYS_ENTRY_CREATE,
-            [null_terminated.as_ptr() as u64, perm.to_bits() as u64, 0, 0, 0, 0],
-        ).map(|_| ());
+            [
+                null_terminated.as_ptr() as u64,
+                perm.to_bits() as u64,
+                0,
+                0,
+                0,
+                0,
+            ],
+        )
+        .map(|_| ());
     }
     let mut buf = [0u8; 256];
     buf[..path.len()].copy_from_slice(path.as_bytes());
@@ -232,17 +274,14 @@ pub fn unlink(path: &str) -> Result<(), Error> {
         return crate::syscall::call(
             SYS_ENTRY_DELETE,
             [null_terminated.as_ptr() as u64, 0, 0, 0, 0, 0],
-        ).map(|_| ());
+        )
+        .map(|_| ());
     }
     let mut buf = [0u8; 256];
     buf[..path.len()].copy_from_slice(path.as_bytes());
     buf[path.len()] = 0;
 
-    crate::syscall::call(
-        SYS_ENTRY_DELETE,
-        [buf.as_ptr() as u64, 0, 0, 0, 0, 0],
-    )
-    .map(|_| ())
+    crate::syscall::call(SYS_ENTRY_DELETE, [buf.as_ptr() as u64, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
 /// 高阶便捷函数：读取文件全部内容到 `Vec<u8>`。
@@ -276,12 +315,19 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     let mut buf = [0u8; 2048];
     let n = crate::syscall::call(
         SYS_ENTRY_READ,
-        [null_terminated.as_ptr() as u64, buf.as_mut_ptr() as u64, buf.len() as u64, 0, 0, 0],
+        [
+            null_terminated.as_ptr() as u64,
+            buf.as_mut_ptr() as u64,
+            buf.len() as u64,
+            0,
+            0,
+            0,
+        ],
     )? as usize;
 
     let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
     let mut entries = Vec::new();
-    
+
     // 如果是 JSON 数组 [{"name":"...","type":"...","size":...}]
     let trimmed = text.trim();
     if trimmed.starts_with('[') && trimmed.ends_with(']') {
@@ -306,7 +352,11 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
                 }
             }
             if !name.is_empty() {
-                entries.push(DirEntry { name, node_type, size });
+                entries.push(DirEntry {
+                    name,
+                    node_type,
+                    size,
+                });
             }
         }
         return Ok(entries);

@@ -12,7 +12,8 @@ pub fn info(what: u64) -> Result<u64, Error> {
                 if let Ok(text) = core::str::from_utf8(&data) {
                     if let Some(pos) = text.find("\"cores\":") {
                         let rest = &text[pos + 8..];
-                        let num_str: alloc::string::String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        let num_str: alloc::string::String =
+                            rest.chars().take_while(|c| c.is_ascii_digit()).collect();
                         if let Ok(n) = num_str.parse::<u64>() {
                             return Ok(n);
                         }

@@ -5,7 +5,10 @@ use crate::nr::{SYS_TASK_EXIT, SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT};
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
 pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
-    crate::syscall::call(SYS_TASK_SPAWN, [prog, cmd.as_ptr() as u64, cmd.len() as u64, 0, 0, 0])
+    crate::syscall::call(
+        SYS_TASK_SPAWN,
+        [prog, cmd.as_ptr() as u64, cmd.len() as u64, 0, 0, 0],
+    )
 }
 
 /// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/binaries/shell.elf`）加载并运行新进程。
@@ -78,7 +81,11 @@ pub fn ps(buf: &mut [PsEntry]) -> Result<usize, Error> {
                 }
             }
             if pid > 0 {
-                buf[count] = PsEntry { pid, state, _pad: [0; 3] };
+                buf[count] = PsEntry {
+                    pid,
+                    state,
+                    _pad: [0; 3],
+                };
                 count += 1;
             }
         }
