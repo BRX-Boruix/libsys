@@ -2,8 +2,8 @@
 
 use crate::error::Error;
 use crate::nr::{
-    STREAM_OFFSET_CURRENT, SYS_MEMORY_MAP, SYS_MEMORY_UNMAP, SYS_STREAM_CLOSE, SYS_STREAM_CREATE,
-    SYS_STREAM_READ, SYS_STREAM_WRITE,
+    STREAM_OFFSET_CURRENT, SYS_MEMORY_MAP, SYS_STREAM_CLOSE, SYS_STREAM_CREATE, SYS_STREAM_READ,
+    SYS_STREAM_WRITE,
 };
 
 /// `shm_create(size) -> id`：创建一块大小为 `size` 的共享内存对象（走 SYS_MEMORY_MAP）。
@@ -17,11 +17,6 @@ pub fn shm_map(id: u64) -> Result<u64, Error> {
         SYS_MEMORY_MAP,
         [0, 0x02 /* map existing flag */, id, 0, 0, 0],
     )
-}
-
-/// `shm_unmap(id)`：解除本进程对该共享内存的映射（走 SYS_MEMORY_UNMAP）。
-pub fn shm_unmap(id: u64) -> Result<(), Error> {
-    crate::syscall::call(SYS_MEMORY_UNMAP, [id, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
 /// `pipe_create() -> id`：创建一条匿名管道（走 SYS_STREAM_CREATE(null, FLAG_PIPE)）。
