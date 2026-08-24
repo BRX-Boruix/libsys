@@ -46,12 +46,21 @@ pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
 pub const SYS_MEMORY_MAP: u32 = nr(domain::MEMORY, op::CREATE); // 0x21
-/// `memory_query(addr, out_ptr) -> status`：查询地址属性与状态。
+/// `memory_query(addr, out_ptr) -> 0`：查询 `addr` 所在 4KB 页属性，把 u64
+/// 位图写入 `out_ptr`（须为可写用户缓冲）。KM2：内核侧此前缺席本调用号，
+/// 现已接通；位值与内核 `sys_memory_query` 双侧定义、注释互指。
 pub const SYS_MEMORY_QUERY: u32 = nr(domain::MEMORY, op::READ); // 0x22
 /// `memory_grow(new_break) -> break`：调整进程堆边界（替代 brk）。
 pub const SYS_MEMORY_GROW: u32 = nr(domain::MEMORY, op::WRITE); // 0x23
 /// `memory_unmap(addr, size) -> 0`：解除虚存映射。
 pub const SYS_MEMORY_UNMAP: u32 = nr(domain::MEMORY, op::DELETE); // 0x24
+
+/// `memory_query` 位图：页表项 present（demand 区未触碰时整字为 0）。
+pub const MEMQ_PRESENT: u64 = 1 << 0;
+/// `memory_query` 位图：用户态可访问（PTE user 位）。
+pub const MEMQ_USER: u64 = 1 << 1;
+/// `memory_query` 位图：可写（PTE rw 位）。
+pub const MEMQ_WRITABLE: u64 = 1 << 2;
 
 // ---------- 3. TASK Domain (0x30) ----------
 /// `task_spawn(path_ptr, args_ptr, args_len) -> pid`：加载 ELF 镜像为新进程执行。
