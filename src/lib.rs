@@ -52,7 +52,7 @@ pub use io::{
 };
 pub use ipc::{pipe_close, pipe_create, pipe_read, pipe_write, shm_create, shm_map};
 pub use mem::{brk, mmap, munmap};
-pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, yield_now};
+pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any, yield_now, WAIT_ANY};
 
 pub use system::info;
 pub use time::{now, sleep};

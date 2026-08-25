@@ -118,3 +118,13 @@ pub fn exit(code: i32) -> ! {
 pub fn yield_now() -> Result<(), Error> {
     crate::syscall::call(SYS_TASK_WAIT, [0, 0, 0, 0, 0, 0]).map(|_| ())
 }
+
+/// `TASK_WAIT` 的 `target_pid` 哨兵值：等待任意子进程退出。
+/// 与内核侧 `task::scheduler::WAIT_ANY` 同值（`usize::MAX` / `u64::MAX`）。
+pub const WAIT_ANY: u64 = u64::MAX;
+
+/// `waitpid_any()`：等待任意直接子进程退出，返回其退出码。
+/// 阻塞当前进程直到任一子进程退出。无子进程时返回 `Err(NotFound)`。
+pub fn waitpid_any() -> Result<u64, Error> {
+    crate::syscall::call(SYS_TASK_WAIT, [WAIT_ANY, 0, 0, 0, 0, 0])
+}
