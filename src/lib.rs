@@ -40,6 +40,7 @@ mod builtins;
 mod io;
 mod ipc;
 mod mem;
+mod object;
 mod process;
 mod start;
 mod system;
@@ -56,6 +57,8 @@ pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any
 
 pub use system::info;
 pub use time::{now, sleep};
+
+pub use object::{Stream, Task, Vfs};
 
 use core::panic::PanicInfo;
 
