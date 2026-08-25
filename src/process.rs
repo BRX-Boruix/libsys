@@ -11,7 +11,7 @@ pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
     )
 }
 
-/// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/binaries/shell.elf`）加载并运行新进程。
+/// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/programs/shell.elf`）加载并运行新进程。
 pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
     let mut null_terminated = [0u8; 256];
     if path.len() >= 255 {
