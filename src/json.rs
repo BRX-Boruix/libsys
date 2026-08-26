@@ -432,9 +432,226 @@ fn i64_to_str(val: i64, buf: &mut [u8; 32]) -> &str {
     core::str::from_utf8(&buf[pos..32]).unwrap_or("")
 }
 
+// ===========================================================================
+// JSON Parser（ADR-024：用户态解析，内核不碰）
+//
+// 2026-09-17 从 `shell/src/tree_json.rs` 迁入，供 init / shell / 未来的
+// 用户态守护进程共享。本模块只有 encoder 时是"输出结构化数据"的安全操作；
+// parser 的输入是不可信字节流，必须处理各种畸形情况——这是它不进入内核
+// （klib）的根本原因。语法树渲染（树状图打印）属 shell 呈现层，留在 shell
+// 侧 `shell/src/json_tree.rs`，本模块只负责解析。
+// ===========================================================================
+
+/// JSON 解析结果值（保留原始词法形态：数值以字符串保存，不做精度转换）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum JsonValue {
+    Null,
+    Bool(bool),
+    Number(String),
+    String(String),
+    Array(Vec<JsonValue>),
+    Object(Vec<(String, JsonValue)>),
+}
+
+/// JSON 解析器（基于字符流迭代器，递归下降）。
+pub struct JsonParser<'a> {
+    chars: core::str::Chars<'a>,
+    peeked: Option<char>,
+}
+
+impl<'a> JsonParser<'a> {
+    pub fn new(input: &'a str) -> Self {
+        Self {
+            chars: input.chars(),
+            peeked: None,
+        }
+    }
+
+    fn peek(&mut self) -> Option<char> {
+        if self.peeked.is_none() {
+            self.peeked = self.chars.next();
+        }
+        self.peeked
+    }
+
+    fn next(&mut self) -> Option<char> {
+        if let Some(c) = self.peeked.take() {
+            Some(c)
+        } else {
+            self.chars.next()
+        }
+    }
+
+    fn skip_whitespace(&mut self) {
+        while let Some(c) = self.peek() {
+            if c.is_ascii_whitespace() {
+                self.next();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// 解析一个完整 JSON 值。失败返回描述性 `&'static str`（不 panic）。
+    pub fn parse(&mut self) -> Result<JsonValue, &'static str> {
+        self.skip_whitespace();
+        match self.peek() {
+            Some('{') => self.parse_object(),
+            Some('[') => self.parse_array(),
+            Some('"') => self.parse_string().map(JsonValue::String),
+            Some('t') | Some('f') => self.parse_bool(),
+            Some('n') => self.parse_null(),
+            Some(c) if c == '-' || c.is_ascii_digit() => self.parse_number(),
+            _ => Err("unexpected character in json"),
+        }
+    }
+
+    fn parse_object(&mut self) -> Result<JsonValue, &'static str> {
+        self.next(); // '{'
+        let mut fields = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if self.peek() == Some('}') {
+                self.next();
+                break;
+            }
+            let key = self.parse_string()?;
+            self.skip_whitespace();
+            if self.next() != Some(':') {
+                return Err("expected ':' after key");
+            }
+            let val = self.parse()?;
+            fields.push((key, val));
+
+            self.skip_whitespace();
+            match self.peek() {
+                Some(',') => {
+                    self.next();
+                }
+                Some('}') => {
+                    self.next();
+                    break;
+                }
+                _ => return Err("expected ',' or '}' in object"),
+            }
+        }
+        Ok(JsonValue::Object(fields))
+    }
+
+    fn parse_array(&mut self) -> Result<JsonValue, &'static str> {
+        self.next(); // '['
+        let mut items = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if self.peek() == Some(']') {
+                self.next();
+                break;
+            }
+            let val = self.parse()?;
+            items.push(val);
+
+            self.skip_whitespace();
+            match self.peek() {
+                Some(',') => {
+                    self.next();
+                }
+                Some(']') => {
+                    self.next();
+                    break;
+                }
+                _ => return Err("expected ',' or ']' in array"),
+            }
+        }
+        Ok(JsonValue::Array(items))
+    }
+
+    fn parse_string(&mut self) -> Result<String, &'static str> {
+        self.skip_whitespace();
+        if self.next() != Some('"') {
+            return Err("expected '\"'");
+        }
+        let mut s = String::new();
+        while let Some(c) = self.next() {
+            match c {
+                '"' => return Ok(s),
+                '\\' => match self.next() {
+                    Some('"') => s.push('"'),
+                    Some('\\') => s.push('\\'),
+                    Some('/') => s.push('/'),
+                    Some('b') => s.push('\x08'),
+                    Some('f') => s.push('\x0C'),
+                    Some('n') => s.push('\n'),
+                    Some('r') => s.push('\r'),
+                    Some('t') => s.push('\t'),
+                    Some('u') => {
+                        // 简化 4 位十六进制解析：非法转义不 panic，截断/越界
+                        // 统一落为 '?' 占位，保持"宁可怪异不可崩溃"的用户态边界。
+                        let mut hex_val = 0u32;
+                        for _ in 0..4 {
+                            if let Some(hc) = self.next() {
+                                if let Some(d) = hc.to_digit(16) {
+                                    hex_val = (hex_val << 4) | d;
+                                }
+                            }
+                        }
+                        if let Some(ch) = char::from_u32(hex_val) {
+                            s.push(ch);
+                        } else {
+                            s.push('?');
+                        }
+                    }
+                    _ => s.push('?'),
+                },
+                other => s.push(other),
+            }
+        }
+        Err("unclosed string")
+    }
+
+    fn parse_number(&mut self) -> Result<JsonValue, &'static str> {
+        let mut s = String::new();
+        while let Some(c) = self.peek() {
+            if c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E' || c.is_ascii_digit() {
+                s.push(self.next().unwrap());
+            } else {
+                break;
+            }
+        }
+        Ok(JsonValue::Number(s))
+    }
+
+    fn parse_bool(&mut self) -> Result<JsonValue, &'static str> {
+        if self.peek() == Some('t') {
+            for expected in "true".chars() {
+                if self.next() != Some(expected) {
+                    return Err("expected true");
+                }
+            }
+            Ok(JsonValue::Bool(true))
+        } else {
+            for expected in "false".chars() {
+                if self.next() != Some(expected) {
+                    return Err("expected false");
+                }
+            }
+            Ok(JsonValue::Bool(false))
+        }
+    }
+
+    fn parse_null(&mut self) -> Result<JsonValue, &'static str> {
+        for expected in "null".chars() {
+            if self.next() != Some(expected) {
+                return Err("expected null");
+            }
+        }
+        Ok(JsonValue::Null)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_stack_json_object() {
@@ -452,5 +669,97 @@ mod tests {
             target.as_str(),
             r#"{"name":"borui-user","version":1,"active":true,"parent":null}"#
         );
+    }
+
+    // ---- 以下为自 shell/src/tree_json.rs 随迁的 parser 测试（ADR-024） ----
+
+    #[test]
+    fn test_parse_nested_object() {
+        let json_str = r#"{"arch":"x86_64","cores":4,"features":["smap","smep"],"status":{"online":true,"uptime":12345}}"#;
+        let mut parser = JsonParser::new(json_str);
+        let val = parser.parse().expect("parse failed");
+
+        match &val {
+            JsonValue::Object(fields) => {
+                assert_eq!(fields.len(), 4);
+                assert_eq!(fields[0].0, "arch");
+                assert_eq!(fields[0].1, JsonValue::String("x86_64".into()));
+                assert_eq!(fields[1].0, "cores");
+                assert_eq!(fields[1].1, JsonValue::Number("4".into()));
+                assert_eq!(
+                    fields[2].1,
+                    JsonValue::Array(vec![
+                        JsonValue::String("smap".into()),
+                        JsonValue::String("smep".into()),
+                    ])
+                );
+                assert_eq!(
+                    fields[3].1,
+                    JsonValue::Object(vec![
+                        ("online".into(), JsonValue::Bool(true)),
+                        ("uptime".into(), JsonValue::Number("12345".into())),
+                    ])
+                );
+            }
+            _ => panic!("root must be object"),
+        }
+    }
+
+    #[test]
+    fn test_parse_primitive_values() {
+        let cases: &[(&str, JsonValue)] = &[
+            ("null", JsonValue::Null),
+            ("true", JsonValue::Bool(true)),
+            ("false", JsonValue::Bool(false)),
+            ("-12.5e3", JsonValue::Number("-12.5e3".into())),
+            (r#""hello""#, JsonValue::String("hello".into())),
+            ("[]", JsonValue::Array(vec![])),
+            ("{}", JsonValue::Object(vec![])),
+        ];
+        for (input, expected) in cases {
+            let mut parser = JsonParser::new(input);
+            assert_eq!(parser.parse().unwrap(), *expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn test_parse_string_escapes() {
+        let mut parser = JsonParser::new(r#""a\"b\\c\/d\n\t""#);
+        assert_eq!(
+            parser.parse().unwrap(),
+            JsonValue::String("a\"b\\c/d\n\t".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_whitespace_tolerance() {
+        let mut parser = JsonParser::new("  \n\t { \"a\" : [ 1 , 2 ] } \r\n ");
+        assert_eq!(
+            parser.parse().unwrap(),
+            JsonValue::Object(vec![(
+                "a".into(),
+                JsonValue::Array(vec![JsonValue::Number("1".into()), JsonValue::Number("2".into())])
+            )])
+        );
+    }
+
+    #[test]
+    fn test_parse_rejects_malformed() {
+        // 对抗输入：畸形 JSON 必须报错，绝不 panic。
+        let bad_cases: &[&str] = &[
+            "",              // 空输入
+            "{",             // 未闭合对象
+            "[1,",           // 尾逗号 + 未闭合数组
+            r#"{"a" 1}"#,    // 缺冒号
+            r#"{"a":"b" "c"}"#, // 缺逗号
+            "tru",           // 截断布尔
+            "\"unclosed",    // 未闭合字符串
+            "boom",          // 纯垃圾
+            "nul",           // 截断 null
+        ];
+        for input in bad_cases {
+            let mut parser = JsonParser::new(input);
+            assert!(parser.parse().is_err(), "input {input:?} must fail");
+        }
     }
 }
