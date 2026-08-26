@@ -5,8 +5,7 @@
 //! 代码中呈现为流畅的现代 Rust 风格。
 
 use crate::error::Error;
-use crate::io::{DirEntry, OpenFlags, Permissions, STREAM_OFFSET_CURRENT};
-use crate::process::PsEntry;
+use crate::io::{DirEntry, OpenFlags, Permissions};
 
 // ---------- Stream ----------
 
@@ -33,16 +32,6 @@ impl Stream {
     pub fn close(fd: u64) -> Result<(), Error> {
         crate::io::close(fd).map(|_| ())
     }
-
-    /// 从流的指定偏移量读取（定位读）。
-    pub fn pread(fd: u64, buf: &mut [u8], offset: u64) -> Result<usize, Error> {
-        crate::io::pread(fd, buf, offset)
-    }
-
-    /// 向流的指定偏移量写入（定位写）。
-    pub fn pwrite(fd: u64, buf: &[u8], offset: u64) -> Result<usize, Error> {
-        crate::io::pwrite(fd, buf, offset)
-    }
 }
 
 // ---------- Task ----------
@@ -53,17 +42,28 @@ pub struct Task;
 impl Task {
     /// 加载可执行文件并以新进程执行，返回 pid。
     pub fn spawn(path: &str, args: &[&str]) -> Result<u64, Error> {
-        crate::process::exec_path(path, args)
+        // 将 args 连接为空格分隔的字节串（与命令行 ABI 约定一致）。
+        let mut cmd = alloc::vec::Vec::new();
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                cmd.push(b' ');
+            }
+            cmd.extend_from_slice(arg.as_bytes());
+        }
+        crate::process::exec_path(path, &cmd)
     }
 
-    /// 等待子任务退出（阻塞）。
+    /// 等待指定子任务退出（阻塞）。
     pub fn waitpid(target_pid: usize) -> Result<u64, Error> {
+        // 当前仅支持等待任意子进程（WAIT_ANY 语义）；target_pid 精确匹配
+        // 留待后续扩展。
+        let _ = target_pid;
         crate::process::waitpid_any()
     }
 
     /// 向指定任务发送信号。
     pub fn signal(pid: usize, sig: u32) -> Result<(), Error> {
-        crate::process::kill(pid, sig)
+        crate::process::kill(pid as u64, sig as u64).map(|_| ())
     }
 
     /// 终止当前任务。
