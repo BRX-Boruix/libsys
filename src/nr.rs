@@ -75,6 +75,10 @@ pub const SYS_TASK_EXIT: u32 = nr(domain::TASK, op::DELETE); // 0x34
 // ---------- 4. VFS Domain (0x40) ----------
 /// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。
 pub const SYS_ENTRY_CREATE: u32 = nr(domain::VFS, op::CREATE); // 0x41
+/// ENTRY_CREATE 的 kind：创建目录（ADR-014 §4.4 `kind=DIR/DIRECTORY`）。
+pub const ENTRY_KIND_DIRECTORY: u64 = 0;
+/// ENTRY_CREATE 的 kind：创建普通文件。
+pub const ENTRY_KIND_FILE: u64 = 1;
 /// `entry_read(path_ptr, json_buf_ptr, cap) -> len`：读取目录项列表（直接填充 JSON）。
 pub const SYS_ENTRY_READ: u32 = nr(domain::VFS, op::READ); // 0x42
 /// `entry_update(path_ptr, new_path_ptr, flags) -> 0`：移动/重命名/修改元数据。

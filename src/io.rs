@@ -245,8 +245,8 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
             SYS_ENTRY_CREATE,
             [
                 null_terminated.as_ptr() as u64,
+                crate::nr::ENTRY_KIND_DIRECTORY,
                 perm.to_bits() as u64,
-                0,
                 0,
                 0,
                 0,
@@ -260,7 +260,14 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
 
     crate::syscall::call(
         SYS_ENTRY_CREATE,
-        [buf.as_ptr() as u64, perm.to_bits() as u64, 0, 0, 0, 0],
+        [
+            buf.as_ptr() as u64,
+            crate::nr::ENTRY_KIND_DIRECTORY,
+            perm.to_bits() as u64,
+            0,
+            0,
+            0,
+        ],
     )
     .map(|_| ())
 }
