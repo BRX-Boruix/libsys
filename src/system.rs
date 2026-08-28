@@ -8,7 +8,7 @@ pub fn info(what: u64) -> Result<u64, Error> {
     match what {
         INFO_VERSION => Ok(0x000100), // v0.1.0
         INFO_CPU_COUNT => {
-            if let Ok(data) = crate::io::read_to_end("/system/cpu") {
+            if let Ok(data) = crate::io::read_to_end("/system/info/cpu") {
                 if let Ok(text) = core::str::from_utf8(&data) {
                     if let Some(pos) = text.find("\"cores\":") {
                         let rest = &text[pos + 8..];
