@@ -20,21 +20,19 @@ pub struct WallClock {
     pub second: u64,
 }
 
-/// `now()`：单调时钟，纳秒（现代 x86_64 直接走 RDTSC / 0 系统调用开销）。
+/// `now()`：单调时钟，纳秒（自开机至今）。
+///
+/// 走 SysFS `/system/info/kernel` 的 `uptime_ms`（内核 `klib::time::now_millis`，
+/// 基于 LAPIC/HPET 校准后的正确单调时钟），换算为纳秒返回。
+///
+/// **不要用裸 RDTSC**——RDTSC 返回的是 CPU 周期计数，假设 1GHz（1 tick ≈ 1ns）
+/// 会把实际远高于 1GHz 的 CPU 频率误当纳秒，使时间虚快（与旧 `uptime` 同根，
+/// 见 `system.rs` INFO_BOOT_MS 注释）。SysFS 读取失败时返回 0（宁缺毋假，
+/// ADR-027，与 `info(INFO_BOOT_MS)` 的调用方兜底一致）。
 pub fn now() -> u64 {
-    let tsc: u64;
-    unsafe {
-        core::arch::asm!(
-            "rdtsc",
-            "shl rdx, 32",
-            "or rax, rdx",
-            out("rax") tsc,
-            out("rdx") _,
-            options(nomem, nostack)
-        );
-    }
-    // 假设 1GHz (1 tick ≈ 1 ns)，提供纳秒单调时钟
-    tsc
+    crate::system::info(crate::nr::INFO_BOOT_MS)
+        .map(|ms| ms * 1_000_000)
+        .unwrap_or(0)
 }
 
 /// `read_wall_clock()`：读取当前墙钟时间（真实年月日时分秒）。

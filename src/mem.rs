@@ -10,6 +10,11 @@ pub fn mmap(size: u64) -> Result<u64, Error> {
 
 /// `shm_map(id, size) -> vaddr`：把既有共享内存对象映射进本进程（ADR-014
 /// §4.2，旧 `SYS_SHM_MAP` 合并到 `memory_map` 的 `shared_id` 参数）。
+///
+/// `#[allow(dead_code)]`：作为 libsys 对外公开的共享内存 API（ADR-014 §4.2），
+/// 当前尚无内部调用方，保留供未来用户程序使用（与 mmap/munmap/brk 同属
+/// MEMORY 域薄封装）。
+#[allow(dead_code)]
 pub fn shm_map(id: u64, size: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_MEMORY_MAP, [size, 0, id, 0, 0, 0])
 }
@@ -17,6 +22,10 @@ pub fn shm_map(id: u64, size: u64) -> Result<u64, Error> {
 /// `shm_create(size) -> vaddr`：新建共享内存对象并映射（ADR-014 §4.2，旧
 /// `SYS_SHM_CREATE` 合并到 `memory_map` 的 `MEM_MAP_SHARED` 标志），返回映射
 /// 起始虚拟地址。
+///
+/// `#[allow(dead_code)]`：同 [`shm_map`]，对外公开的共享内存 API，暂无内部
+/// 调用方，保留供未来使用。
+#[allow(dead_code)]
 pub fn shm_create(size: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_MEMORY_MAP, [size, MEM_MAP_SHARED, 0, 0, 0, 0])
 }

@@ -90,6 +90,5 @@ fn panic(info: &PanicInfo) -> ! {
         }
     }
     let _ = write(1, b"\n");
-    let _ = exit(101);
-    loop {}
+    exit(101)
 }

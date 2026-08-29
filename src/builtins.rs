@@ -9,24 +9,33 @@
 //! `copy_from_slice`）。此处用 SysV C ABI 手动实现兜底，无需引入外部 crate。
 //!
 //! 仅依赖 `libsys` 的用户程序（init / shell）会因此自动获得这些符号。
+//!
+//! 签名必须与标准库 `compiler-builtins` 期望的 `c_void` 指针一致，否则触发
+//! `suspicious_runtime_symbol_definitions` 警告。
+
+use core::ffi::c_void;
 
 /// `memcpy(dest, src, n)`：非重叠拷贝（Rust `copy_from_slice` 走此路径）。
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+pub unsafe extern "C" fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
     unsafe {
+        let dest = dest as *mut u8;
+        let src = src as *const u8;
         let mut i = 0;
         while i < n {
             *dest.add(i) = *src.add(i);
             i += 1;
         }
-        dest
+        dest as *mut c_void
     }
 }
 
 /// `memmove(dest, src, n)`：支持重叠的拷贝（`copy` 可能走此路径）。
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+pub unsafe extern "C" fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
     unsafe {
+        let dest = dest as *mut u8;
+        let src = src as *const u8;
         if (dest as usize) < (src as usize) {
             let mut i = 0;
             while i < n {
@@ -40,28 +49,31 @@ pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mu
                 *dest.add(i) = *src.add(i);
             }
         }
-        dest
+        dest as *mut c_void
     }
 }
 
 /// `memset(dest, c, n)`：按字节填充（`write_bytes` 走此路径）。
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memset(dest: *mut u8, c: i32, n: usize) -> *mut u8 {
+pub unsafe extern "C" fn memset(dest: *mut c_void, c: i32, n: usize) -> *mut c_void {
     unsafe {
+        let dest = dest as *mut u8;
         let c = (c & 0xff) as u8;
         let mut i = 0;
         while i < n {
             *dest.add(i) = c;
             i += 1;
         }
-        dest
+        dest as *mut c_void
     }
 }
 
 /// `memcmp(a, b, n)`：逐字节比较，返回首处差值的符号（相等返回 0）。
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcmp(a: *const u8, b: *const u8, n: usize) -> i32 {
+pub unsafe extern "C" fn memcmp(a: *const c_void, b: *const c_void, n: usize) -> i32 {
     unsafe {
+        let a = a as *const u8;
+        let b = b as *const u8;
         let mut i = 0;
         while i < n {
             let va = *a.add(i);
