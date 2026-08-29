@@ -45,6 +45,7 @@ mod random;
 mod start;
 mod system;
 mod time;
+mod volume;
 
 pub use error::Error;
 pub use io::{
@@ -59,6 +60,8 @@ pub use system::info;
 pub use time::{now, read_wall_clock, sleep, WallClock};
 
 pub use object::{Stream, Task, Vfs};
+
+pub use volume::{DeviceEventInfo, next_device_event, volume_list, volume_mount, volume_unmount};
 
 use core::panic::PanicInfo;
 

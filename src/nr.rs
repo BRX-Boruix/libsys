@@ -28,6 +28,9 @@ pub mod op {
     pub const FORMAT: u32 = 0x05;
     /// VOLUME 域扩展动词：卸载卷。
     pub const UNMOUNT: u32 = 0x06;
+    /// DEVICE 域扩展动词（P2-2）：消费下一条硬件拓扑事件（DeviceArrived/Departed）。
+    /// 供用户态 `volumed` 订阅内核块设备事件（ADR-030 §决策3 事件通道）。
+    pub const EVENT: u32 = 0x07;
 }
 
 const fn nr(d: u32, o: u32) -> u32 {
@@ -110,9 +113,13 @@ pub const SYS_DRIVER_QUERY: u32 = nr(domain::DEVICE, op::READ); // 0x52
 pub const SYS_DRIVER_CLAIM: u32 = nr(domain::DEVICE, op::WRITE); // 0x53
 /// `driver_unregister(slot) -> 0`：注销驱动并解绑设备。
 pub const SYS_DRIVER_UNREGISTER: u32 = nr(domain::DEVICE, op::DELETE); // 0x54
+/// `driver_event_next(buf_ptr, cap) -> len`：消费下一条硬件拓扑事件（JSON）。
+/// 无待消费事件返回 0（空）。volumed 订阅块设备事件（ADR-030 §决策3）。
+pub const SYS_DRIVER_EVENT_NEXT: u32 = nr(domain::DEVICE, op::EVENT); // 0x57
 
 // ---------- 6. VOLUME Domain (0x60, ADR-030) ----------
-/// `volume_mount(dev_name_ptr, target_ptr) -> 0`：挂载一个块设备分区到 `/volumes/{name}`。
+/// `volume_mount(dev_name_ptr, out_path_ptr, out_cap) -> len`：挂载一个块设备
+/// 分区到 `/volumes/{name}`，把**真实挂载路径**写入 out_path（返回其长度）。
 pub const SYS_VOLUME_MOUNT: u32 = nr(domain::VOLUME, op::CREATE); // 0x61
 /// `volume_list(buf_ptr, cap) -> len`：列出已挂载卷（JSON）。
 pub const SYS_VOLUME_LIST: u32 = nr(domain::VOLUME, op::READ); // 0x62
