@@ -14,6 +14,8 @@ pub mod domain {
     pub const TASK: u32 = 0x30;
     pub const VFS: u32 = 0x40;
     pub const DEVICE: u32 = 0x50;
+    /// VOLUME 域（ADR-030 §决策6）：卷管理能力（挂/列/更/格/卸）。
+    pub const VOLUME: u32 = 0x60;
 }
 
 pub mod op {
@@ -21,6 +23,11 @@ pub mod op {
     pub const READ: u32 = 0x02;
     pub const WRITE: u32 = 0x03;
     pub const DELETE: u32 = 0x04;
+    /// VOLUME 域扩展动词：格式化卷（建文件系统）。独立于 4 个通用动词，
+    /// 不复用 `DELETE` 的 0x04（业务语义不同，S13）。
+    pub const FORMAT: u32 = 0x05;
+    /// VOLUME 域扩展动词：卸载卷。
+    pub const UNMOUNT: u32 = 0x06;
 }
 
 const fn nr(d: u32, o: u32) -> u32 {
@@ -103,6 +110,18 @@ pub const SYS_DRIVER_QUERY: u32 = nr(domain::DEVICE, op::READ); // 0x52
 pub const SYS_DRIVER_CLAIM: u32 = nr(domain::DEVICE, op::WRITE); // 0x53
 /// `driver_unregister(slot) -> 0`：注销驱动并解绑设备。
 pub const SYS_DRIVER_UNREGISTER: u32 = nr(domain::DEVICE, op::DELETE); // 0x54
+
+// ---------- 6. VOLUME Domain (0x60, ADR-030) ----------
+/// `volume_mount(dev_name_ptr, target_ptr) -> 0`：挂载一个块设备分区到 `/volumes/{name}`。
+pub const SYS_VOLUME_MOUNT: u32 = nr(domain::VOLUME, op::CREATE); // 0x61
+/// `volume_list(buf_ptr, cap) -> len`：列出已挂载卷（JSON）。
+pub const SYS_VOLUME_LIST: u32 = nr(domain::VOLUME, op::READ); // 0x62
+/// `volume_update(path_ptr, new_path_ptr, flags) -> 0`：卷属性管理（重命名/卸载信号）。
+pub const SYS_VOLUME_UPDATE: u32 = nr(domain::VOLUME, op::WRITE); // 0x63
+/// `volume_format(dev_name_ptr, label_ptr) -> 0`：格式化卷（建文件系统）。
+pub const SYS_VOLUME_FORMAT: u32 = nr(domain::VOLUME, op::FORMAT); // 0x65
+/// `volume_unmount(path_ptr) -> 0`：卸载卷。
+pub const SYS_VOLUME_UNMOUNT: u32 = nr(domain::VOLUME, op::UNMOUNT); // 0x66
 
 /// `exec` 程序池索引：shell（PID 2）。
 pub const PROG_SHELL: u64 = 1;
