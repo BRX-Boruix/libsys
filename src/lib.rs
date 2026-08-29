@@ -54,7 +54,7 @@ pub use mem::{brk, mmap, munmap};
 pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any, yield_now, WAIT_ANY};
 
 pub use system::info;
-pub use time::{now, sleep};
+pub use time::{now, read_wall_clock, sleep, WallClock};
 
 pub use object::{Stream, Task, Vfs};
 
