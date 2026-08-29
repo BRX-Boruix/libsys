@@ -61,7 +61,7 @@ pub use time::{now, read_wall_clock, sleep, WallClock};
 
 pub use object::{Stream, Task, Vfs};
 
-pub use volume::{DeviceEventInfo, next_device_event, volume_list, volume_mount, volume_unmount};
+pub use volume::{DeviceEventInfo, next_device_event, next_device_event_wait, volume_list, volume_mount, volume_unmount};
 
 use core::panic::PanicInfo;
 

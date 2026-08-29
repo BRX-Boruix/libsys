@@ -58,39 +58,63 @@ pub fn volume_list() -> Result<Vec<u8>, Error> {
     Ok(buf[..n].to_vec())
 }
 
-/// `next_device_event()` -> `Option<DeviceEventInfo>`：消费下一条硬件拓扑事件。
+/// `next_device_event()` -> `Option<DeviceEventInfo>`：**非阻塞**消费下一条硬件
+/// 拓扑事件。无待消费事件返回 `None`（内核返回 0 空）。
 ///
-/// 无待消费事件返回 `None`（内核返回 0 空）。事件由内核 `driver::event` 环形
-/// 日志发布（DeviceArrived / DeviceDeparted），本封装把 JSON 投影为结构化结果。
+/// 事件由内核 `driver::event` 环形日志发布（DeviceArrived / DeviceDeparted），
+/// 本封装把 JSON 投影为结构化结果。
 pub fn next_device_event() -> Result<Option<DeviceEventInfo>, Error> {
-    let mut buf = [0u8; 512];
-    let n = crate::syscall::call(
-        SYS_DRIVER_EVENT_NEXT,
-        [buf.as_mut_ptr() as u64, buf.len() as u64, 0, 0, 0, 0],
-    )? as usize;
-    if n == 0 {
-        return Ok(None);
-    }
-    let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
-    let parsed = crate::json::JsonParser::new(text).parse().map_err(|_| Error::Io)?;
-    let mut ev = DeviceEventInfo {
-        event: String::new(),
-        kind: String::new(),
-        name: String::new(),
-        volatile: false,
-    };
-    if let crate::json::JsonValue::Object(fields) = parsed {
-        for (k, v) in fields {
-            match (k.as_str(), v) {
-                ("event", crate::json::JsonValue::String(s)) => ev.event = s,
-                ("kind", crate::json::JsonValue::String(s)) => ev.kind = s,
-                ("name", crate::json::JsonValue::String(s)) => ev.name = s,
-                ("volatile", crate::json::JsonValue::Bool(b)) => ev.volatile = b,
-                _ => {}
+    next_device_event_wait(0)
+}
+
+/// `next_device_event_wait(timeout_ns)` -> `Option<DeviceEventInfo>`：阻塞等待
+/// 下一条硬件拓扑事件，最多等 `timeout_ns`。
+///
+/// interrupt-to-futex（ADR-030 §决策3）：内核在事件队列空时挂起本进程（`Switched`
+/// 语义），事件到达经 `publish_event` → `wake_event` 唤醒，超时经
+/// `wake_event_timeout` 唤醒；进程回归用户态时内核把保存帧 rax 预置结果——
+/// 事件唤醒置 `-EAGAIN` 哨兵（本封装识别后**重试**取事件）、超时置 `0`（返回
+/// `None`，volumed 据此做周期对账）。`timeout_ns = 0` 退化为非阻塞
+/// （同 [`next_device_event`]）。全程不忙转、不轮询。
+pub fn next_device_event_wait(timeout_ns: u64) -> Result<Option<DeviceEventInfo>, Error> {
+    loop {
+        let mut buf = [0u8; 512];
+        let n = crate::syscall::call(
+            SYS_DRIVER_EVENT_NEXT,
+            [buf.as_mut_ptr() as u64, buf.len() as u64, timeout_ns, 0, 0, 0],
+        );
+        let n = match n {
+            // -EAGAIN 哨兵：曾阻塞、请重试（volumed 单消费者，重试即继续等）。
+            Err(Error::WouldBlock) => continue,
+            other => other? as usize,
+        };
+        if n == 0 {
+            return Ok(None);
+        }
+        if n > buf.len() {
+            return Err(Error::OutOfRange);
+        }
+        let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
+        let parsed = crate::json::JsonParser::new(text).parse().map_err(|_| Error::Io)?;
+        let mut ev = DeviceEventInfo {
+            event: String::new(),
+            kind: String::new(),
+            name: String::new(),
+            volatile: false,
+        };
+        if let crate::json::JsonValue::Object(fields) = parsed {
+            for (k, v) in fields {
+                match (k.as_str(), v) {
+                    ("event", crate::json::JsonValue::String(s)) => ev.event = s,
+                    ("kind", crate::json::JsonValue::String(s)) => ev.kind = s,
+                    ("name", crate::json::JsonValue::String(s)) => ev.name = s,
+                    ("volatile", crate::json::JsonValue::Bool(b)) => ev.volatile = b,
+                    _ => {}
+                }
             }
         }
+        return Ok(Some(ev));
     }
-    Ok(Some(ev))
 }
 
 /// 一条硬件拓扑事件的结构化视图（来自内核 JSON）。
