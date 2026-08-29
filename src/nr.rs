@@ -89,6 +89,10 @@ pub const SYS_ENTRY_READ: u32 = nr(domain::VFS, op::READ); // 0x42
 pub const SYS_ENTRY_UPDATE: u32 = nr(domain::VFS, op::WRITE); // 0x43
 /// `entry_delete(path_ptr) -> 0`：删除节点（替代 unlink）。
 pub const SYS_ENTRY_DELETE: u32 = nr(domain::VFS, op::DELETE); // 0x44
+/// `entry_chdir(path_ptr) -> 0`：切换当前进程工作目录（VFS 域扩展）。
+pub const SYS_ENTRY_CHDIR: u32 = nr(domain::VFS, 0x05); // 0x45
+/// `entry_getcwd(buf_ptr, cap) -> len`：读当前进程工作目录到用户缓冲。
+pub const SYS_ENTRY_GETCWD: u32 = nr(domain::VFS, 0x06); // 0x46
 
 // ---------- 5. DEVICE Domain (0x50, UIO Sandboxing) ----------
 /// `driver_register(name_ptr, len) -> uio_id`：注册用户态驱动。

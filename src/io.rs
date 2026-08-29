@@ -291,6 +291,39 @@ pub fn unlink(path: &str) -> Result<(), Error> {
     crate::syscall::call(SYS_ENTRY_DELETE, [buf.as_ptr() as u64, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
+/// `chdir(path)`：切换当前进程工作目录（VFS 域 0x45）。
+///
+/// 相对路径相对当前 cwd 解析（内核 syscall 层拼接，VFS 只接受绝对路径）。
+pub fn chdir(path: &str) -> Result<(), Error> {
+    if path.len() >= 256 {
+        let mut null_terminated = Vec::with_capacity(path.len() + 1);
+        null_terminated.extend_from_slice(path.as_bytes());
+        null_terminated.push(0);
+        return crate::syscall::call(
+            SYS_ENTRY_CHDIR,
+            [null_terminated.as_ptr() as u64, 0, 0, 0, 0, 0],
+        )
+        .map(|_| ());
+    }
+    let mut buf = [0u8; 256];
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+
+    crate::syscall::call(SYS_ENTRY_CHDIR, [buf.as_ptr() as u64, 0, 0, 0, 0, 0]).map(|_| ())
+}
+
+/// `getcwd()`：读当前进程工作目录（VFS 域 0x46），返回以 `/` 开头的绝对路径。
+pub fn getcwd() -> Result<alloc::string::String, Error> {
+    let mut buf = [0u8; 256];
+    let n = crate::syscall::call(SYS_ENTRY_GETCWD, [buf.as_mut_ptr() as u64, buf.len() as u64, 0, 0, 0, 0])?;
+    let n = n as usize;
+    if n >= buf.len() {
+        return Err(Error::OutOfRange);
+    }
+    let s = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
+    Ok(alloc::string::String::from(s))
+}
+
 /// 高阶便捷函数：读取文件全部内容到 `Vec<u8>`。
 pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
     let fd = open(path, OpenFlags::READ_ONLY, Permissions::readonly())?;
