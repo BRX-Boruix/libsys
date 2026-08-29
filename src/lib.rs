@@ -41,6 +41,7 @@ mod io;
 mod mem;
 mod object;
 mod process;
+mod random;
 mod start;
 mod system;
 mod time;
@@ -52,6 +53,7 @@ pub use io::{
 };
 pub use mem::{brk, mmap, munmap};
 pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any, yield_now, WAIT_ANY};
+pub use random::bytes as random_bytes;
 
 pub use system::info;
 pub use time::{now, read_wall_clock, sleep, WallClock};
