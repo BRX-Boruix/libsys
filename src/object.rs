@@ -98,3 +98,33 @@ impl Vfs {
         crate::io::unlink(path)
     }
 }
+
+// ---------- Sync ----------
+
+/// 内核同步字（跨进程 futex 等待/唤醒）对象风格封装（ADR-032 ACCEPTED）。
+///
+/// 底层委托 [`crate::sync`] 扁平 API。
+pub struct Sync;
+
+impl Sync {
+    /// 创建一个内核同步字对象，初值 `init_value`，返回 `sync_id`。
+    pub fn create(init_value: u64) -> Result<u64, Error> {
+        crate::sync::sync_create(init_value)
+    }
+
+    /// 阻塞等待同步字变为 `!= expected`，或立即返回当前值（值已满足）。
+    /// `timeout_ns == 0` 表示阻塞至被唤醒；超时返回 `expected`（调用方据以判定超时）。
+    pub fn wait(sync_id: u64, expected: u64, timeout_ns: u64) -> Result<u64, Error> {
+        crate::sync::sync_wait(sync_id, expected, timeout_ns)
+    }
+
+    /// 设同步字为 `value`，唤醒至多 `n` 个等待者，返回实际唤醒数。
+    pub fn signal(sync_id: u64, value: u64, n: u64) -> Result<u64, Error> {
+        crate::sync::sync_wake(sync_id, value, n)
+    }
+
+    /// 销毁同步字对象；仍有等待者返回 `Error::Busy`。
+    pub fn destroy(sync_id: u64) -> Result<(), Error> {
+        crate::sync::sync_delete(sync_id)
+    }
+}

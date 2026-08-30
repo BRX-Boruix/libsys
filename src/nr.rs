@@ -16,6 +16,8 @@ pub mod domain {
     pub const DEVICE: u32 = 0x50;
     /// VOLUME 域（ADR-030 §决策6）：卷管理能力（挂/列/更/格/卸）。
     pub const VOLUME: u32 = 0x60;
+    /// SYNC 域（ADR-032 ACCEPTED）：跨进程同步字对象（通用 futex 等待/唤醒）。
+    pub const SYNC: u32 = 0x70;
 }
 
 pub mod op {
@@ -138,6 +140,16 @@ pub const SYS_VOLUME_UPDATE: u32 = nr(domain::VOLUME, op::WRITE); // 0x63
 pub const SYS_VOLUME_FORMAT: u32 = nr(domain::VOLUME, op::FORMAT); // 0x65
 /// `volume_unmount(path_ptr) -> 0`：卸载卷。
 pub const SYS_VOLUME_UNMOUNT: u32 = nr(domain::VOLUME, op::UNMOUNT); // 0x66
+
+// ---------- 7. SYNC Domain (0x70, ADR-032 ACCEPTED) ----------
+/// `sync_create(init_value) -> sync_id`：创建内核同步字对象，初值 `init_value`。
+pub const SYS_SYNC_CREATE: u32 = nr(domain::SYNC, op::CREATE); // 0x71
+/// `sync_wait(sync_id, expected, timeout_ns)`：值 `== expected` 则阻塞，否则立即返回当前值。
+pub const SYS_SYNC_WAIT: u32 = nr(domain::SYNC, op::READ); // 0x72
+/// `sync_wake(sync_id, value, n)`：设值为 `value`，唤醒至多 `n` 个等待者，返回实际唤醒数。
+pub const SYS_SYNC_WAKE: u32 = nr(domain::SYNC, op::WRITE); // 0x73
+/// `sync_delete(sync_id)`：销毁对象；仍有等待者返回 `Busy`。
+pub const SYS_SYNC_DELETE: u32 = nr(domain::SYNC, op::DELETE); // 0x74
 
 /// `exec` 程序池索引：shell（PID 2）。
 pub const PROG_SHELL: u64 = 1;

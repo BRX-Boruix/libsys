@@ -44,6 +44,7 @@ mod pipe;
 mod process;
 mod random;
 mod start;
+mod sync;
 mod system;
 mod time;
 mod volume;
@@ -61,7 +62,9 @@ pub use random::bytes as random_bytes;
 pub use system::info;
 pub use time::{now, read_wall_clock, sleep, WallClock};
 
-pub use object::{Stream, Task, Vfs};
+pub use object::{Stream, Sync, Task, Vfs};
+
+pub use sync::{sync_create, sync_delete, sync_wait, sync_wake};
 
 pub use volume::{DeviceEventInfo, ProbeStatus, device_probe, next_device_event, next_device_event_wait, volume_list, volume_mount, volume_unmount};
 
