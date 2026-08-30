@@ -209,6 +209,18 @@ pub fn close(fd: u64) -> Result<(), Error> {
     crate::syscall::call(SYS_STREAM_CLOSE, [fd, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
+/// `dup2(old_fd, new_fd)`：把 `old_fd` 的句柄复制到 `new_fd`（Unix dup2，
+/// pipe-features 方案 A）。
+///
+/// - 若 `new_fd` 已打开，先关闭旧句柄再复制；
+/// - 副本与 `old_fd` 指向同一文件描述/管道端（共享读写偏移 / 管道同一端）；
+/// - `old_fd == new_fd` 时仅校验存在性，返回 new_fd。
+///
+/// 返回 `new_fd`。管道端引用计数由内核同步维护，用户态无需关心。
+pub fn dup2(old_fd: u64, new_fd: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_STREAM_DUP, [old_fd, new_fd, 0, 0, 0, 0])
+}
+
 /// `read(fd, buf)`：从 fd 读字节到缓冲（流式自增读），返回实际读到的字节数。
 pub fn read(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
     crate::syscall::call(

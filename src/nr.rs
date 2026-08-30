@@ -52,6 +52,10 @@ pub const SYS_STREAM_READ: u32 = nr(domain::STREAM, op::READ); // 0x12
 pub const SYS_STREAM_WRITE: u32 = nr(domain::STREAM, op::WRITE); // 0x13
 /// `stream_close(handle) -> 0`：关闭并释放流句柄。
 pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14
+/// `stream_dup(old_fd, new_fd) -> new_fd`：复制 fd（dup2 语义，pipe-features
+/// 方案 A）。把 `old_fd` 的句柄复制到 `new_fd`（先关 `new_fd` 旧句柄），副本
+/// 与原句柄共享同一文件描述/管道端。管道端引用计数由内核同步维护。
+pub const SYS_STREAM_DUP: u32 = nr(domain::STREAM, 0x05); // 0x15
 
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
