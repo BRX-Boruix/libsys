@@ -116,6 +116,11 @@ pub const SYS_DRIVER_UNREGISTER: u32 = nr(domain::DEVICE, op::DELETE); // 0x54
 /// `driver_event_next(buf_ptr, cap) -> len`：消费下一条硬件拓扑事件（JSON）。
 /// 无待消费事件返回 0（空）。volumed 订阅块设备事件（ADR-030 §决策3）。
 pub const SYS_DRIVER_EVENT_NEXT: u32 = nr(domain::DEVICE, op::EVENT); // 0x57
+/// `device_probe(name_ptr) -> status`：对指定块设备做一次缓存穿透探测读，
+/// 触发其驱动真实访问设备；若设备已消失，驱动发布 `DeviceDeparted`。返回
+/// `ProbeStatus`（alive=0 / gone=1 / notfound=2 / notio=3）。volumed 低频对账
+/// 用它兜底发现"拔除但无事件"的空闲卷（ADR-030 热插拔闭环）。
+pub const SYS_DEVICE_PROBE: u32 = nr(domain::DEVICE, 0x08); // 0x58
 
 // ---------- 6. VOLUME Domain (0x60, ADR-030) ----------
 /// `volume_mount(dev_name_ptr, out_path_ptr, out_cap) -> len`：挂载一个块设备

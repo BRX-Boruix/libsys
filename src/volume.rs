@@ -129,3 +129,39 @@ pub struct DeviceEventInfo {
     /// 数据易失性披露（持久块设备为 `false`）。
     pub volatile: bool,
 }
+
+/// 块设备缓存穿透探测读的结果（对应内核 `driver::hub::ProbeStatus`）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProbeStatus {
+    /// 探测读成功，设备可服务。
+    Alive,
+    /// 探测读失败：设备已消失，内核已发布 `DeviceDeparted`。
+    Gone,
+    /// 设备表中无此名或实例为 None。
+    NotFound,
+    /// 设备存在但非 IO 设备，无可探测。
+    NotIo,
+}
+
+/// `device_probe(dev_name)` -> `ProbeStatus`：对指定块设备做一次缓存穿透探测读
+/// （绕过 VFS 页缓存，直接触达底层驱动真实访问设备）。
+///
+/// 若设备已消失（拔盘/后端移除），驱动在 `read_at` 内部经 `is_device_gone` +
+/// `notify_device_gone` 发布 `DeviceDeparted`（ADR-030 热插拔闭环）。volumed
+/// 低频对账用它兜底发现"拔除但无事件"的空闲卷——比高频周期对账更低频，且
+/// 只触达真实设备、不扫缓存。
+pub fn device_probe(dev_name: &str) -> Result<ProbeStatus, Error> {
+    let mut buf = [0u8; 256];
+    if dev_name.len() >= buf.len() {
+        return Err(Error::OutOfRange);
+    }
+    buf[..dev_name.len()].copy_from_slice(dev_name.as_bytes());
+    buf[dev_name.len()] = 0;
+    let rax = crate::syscall::call(SYS_DEVICE_PROBE, [buf.as_ptr() as u64, 0, 0, 0, 0, 0])?;
+    Ok(match rax {
+        0 => ProbeStatus::Alive,
+        1 => ProbeStatus::Gone,
+        2 => ProbeStatus::NotFound,
+        _ => ProbeStatus::NotIo,
+    })
+}
