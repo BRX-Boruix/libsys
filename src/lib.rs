@@ -40,6 +40,7 @@ mod builtins;
 mod io;
 mod mem;
 mod object;
+mod pipe;
 mod process;
 mod random;
 mod start;
@@ -53,6 +54,7 @@ pub use io::{
     pread, pwrite, read, read_dir, read_to_end, unlink, write,
 };
 pub use mem::{brk, mmap, munmap};
+pub use pipe::pipe_create;
 pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any, yield_now, WAIT_ANY};
 pub use random::bytes as random_bytes;
 

@@ -19,6 +19,9 @@ pub struct OpenFlags {
     pub truncate: bool,
     pub append: bool,
     pub directory: bool,
+    /// FLAG_PIPE（ADR-014 §4.1）：配合空路径，经 `SYS_STREAM_CREATE` 分配一对
+    /// 匿名管道流句柄（`OpenFlags::pipe()` 便捷构造），而非打开文件节点。
+    pub pipe: bool,
 }
 
 impl OpenFlags {
@@ -29,6 +32,7 @@ impl OpenFlags {
         truncate: false,
         append: false,
         directory: false,
+        pipe: false,
     };
 
     pub const WRITE_ONLY: Self = Self {
@@ -38,6 +42,7 @@ impl OpenFlags {
         truncate: false,
         append: false,
         directory: false,
+        pipe: false,
     };
 
     pub const READ_WRITE: Self = Self {
@@ -47,6 +52,7 @@ impl OpenFlags {
         truncate: false,
         append: false,
         directory: false,
+        pipe: false,
     };
 
     pub const CREATE_OR_TRUNCATE: Self = Self {
@@ -56,7 +62,22 @@ impl OpenFlags {
         truncate: true,
         append: false,
         directory: false,
+        pipe: false,
     };
+
+    /// FLAG_PIPE 便捷构造：与 `pipe_create()` 同语义（含 pipe 位、空路径）。
+    /// 显式不读不写文件节点——内核在 FLAG_PIPE 分支忽略 read/write 位。
+    pub const fn pipe_only() -> Self {
+        Self {
+            read: true,
+            write: true,
+            create: false,
+            truncate: false,
+            append: false,
+            directory: false,
+            pipe: true,
+        }
+    }
 
     pub const fn to_bits(self) -> u32 {
         let mut bits = 0;
@@ -77,6 +98,9 @@ impl OpenFlags {
         }
         if self.directory {
             bits |= 1 << 5;
+        }
+        if self.pipe {
+            bits |= 1 << 6;
         }
         bits
     }
