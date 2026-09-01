@@ -18,6 +18,8 @@ pub mod domain {
     pub const VOLUME: u32 = 0x60;
     /// SYNC 域（ADR-032 ACCEPTED）：跨进程同步字对象（通用 futex 等待/唤醒）。
     pub const SYNC: u32 = 0x70;
+    /// SIGNAL 域（ADR-034 PROPOSED）：可编程信号派发（sigaction/sigprocmask/rt_sigreturn）。
+    pub const SIGNAL: u32 = 0x80;
 }
 
 pub mod op {
@@ -150,6 +152,14 @@ pub const SYS_SYNC_WAIT: u32 = nr(domain::SYNC, op::READ); // 0x72
 pub const SYS_SYNC_WAKE: u32 = nr(domain::SYNC, op::WRITE); // 0x73
 /// `sync_delete(sync_id)`：销毁对象；仍有等待者返回 `Busy`。
 pub const SYS_SYNC_DELETE: u32 = nr(domain::SYNC, op::DELETE); // 0x74
+
+// ---------- 8. SIGNAL Domain (0x80, ADR-034 PROPOSED) ----------
+/// `signal_mask(how, set) -> old_set`：查/改屏蔽集（sigprocmask）。
+pub const SYS_SIGNAL_MASK: u32 = nr(domain::SIGNAL, op::READ); // 0x82
+/// `signal_action(sig, handler, flags) -> old_disposition`：查/设处置（sigaction）。
+pub const SYS_SIGNAL_ACTION: u32 = nr(domain::SIGNAL, op::WRITE); // 0x83
+/// `signal_return()`：handler 返回后恢复原帧（rt_sigreturn）。
+pub const SYS_SIGNAL_RETURN: u32 = nr(domain::SIGNAL, op::DELETE); // 0x84
 
 /// `exec` 程序池索引：shell（PID 2）。
 pub const PROG_SHELL: u64 = 1;
