@@ -51,8 +51,8 @@ mod volume;
 
 pub use error::Error;
 pub use io::{
-    DirEntry, OpenFlags, Permissions, STDERR, STDIN, STDOUT, chdir, close, dup2, getcwd, mkdir,
-    open, pread, pwrite, read, read_dir, read_to_end, unlink, write,
+    DirEntry, OpenFlags, Permissions, STDERR, STDIN, STDOUT, StatInfo, chdir, chmod, close, dup2, fstat,
+    getcwd, mkdir, open, pread, pwrite, read, read_dir, read_to_end, rename, stat, unlink, write,
 };
 pub use mem::{brk, mmap, munmap};
 pub use pipe::pipe_create;

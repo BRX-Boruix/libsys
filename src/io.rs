@@ -161,6 +161,47 @@ impl Permissions {
     }
 }
 
+/// stat 结果（与内核 vfs::inode::StatInfo 同布局的镜像）。
+///
+/// #[repr(C)] 固定布局，与内核 ABI 逐字段一致——这是跨边界的真实数据合约，任一例改字段必须同步另一例。
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatInfo {
+    /// 节点类型稳定数字标签（见 StatInfo::type_tag）。
+    pub node_type: u32,
+    /// 文件字节大小。
+    pub size: u64,
+    /// 权限位（Permissions::to_bits 编码）。
+    pub perms: u32,
+    /// 创建时间（Unix 秒；字段不存在时 0）。
+    pub created_time: u64,
+    /// 修改时间（Unix 秒）。
+    pub modified_time: u64,
+    /// 变更时间（Unix 秒）。
+    pub changed_time: u64,
+}
+
+impl StatInfo {
+    /// 节点类型稳定数字标签（与内核 StatInfo::type_tag 一致）。
+    pub fn type_tag(t: u32) -> u32 {
+        t
+    }
+    /// 节点类型常量：普通文件。
+    pub const TYPE_FILE: u32 = 1;
+    /// 节点类型常量：目录。
+    pub const TYPE_DIR: u32 = 2;
+    /// 节点类型常量：字符设备。
+    pub const TYPE_CHARDEV: u32 = 3;
+    /// 节点类型常量：块设备。
+    pub const TYPE_BLKDEV: u32 = 4;
+    /// 节点类型常量：软链符。
+    pub const TYPE_SYMLINK: u32 = 5;
+    /// 节点类型常量：命名管道。
+    pub const TYPE_FIFO: u32 = 6;
+    /// 节点类型常量：套接字。
+    pub const TYPE_SOCKET: u32 = 7;
+}
+
 /// 目录项条目。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirEntry {
@@ -326,6 +367,73 @@ pub fn unlink(path: &str) -> Result<(), Error> {
 
     crate::syscall::call(SYS_ENTRY_DELETE, [buf.as_ptr() as u64, 0, 0, 0, 0, 0]).map(|_| ())
 }
+
+/// 重命名（SYS_ENTRY_UPDATE rename 动作）：同目录内将 old 改名为 new。
+/// 保留 inode 身份，不动内容。
+pub fn rename(old_path: &str, new_path: &str) -> Result<(), Error> {
+    let mut old = [0u8; 256];
+    if old_path.len() >= 255 || new_path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    old[..old_path.len()].copy_from_slice(old_path.as_bytes());
+    old[old_path.len()] = 0;
+    let mut new = [0u8; 256];
+    new[..new_path.len()].copy_from_slice(new_path.as_bytes());
+    new[new_path.len()] = 0;
+    crate::syscall::call(
+        SYS_ENTRY_UPDATE,
+        [old.as_ptr() as u64, new.as_ptr() as u64, 0, crate::nr::ENTRY_UPDATE_RENAME, 0, 0],
+    )
+    .map(|_| ())
+}
+
+/// 设置权限（SYS_ENTRY_UPDATE chmod 动作）：把节点权限设为 perms。
+pub fn chmod(path: &str, perms: Permissions) -> Result<(), Error> {
+    let mut buf = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    crate::syscall::call(
+        SYS_ENTRY_UPDATE,
+        [buf.as_ptr() as u64, perms.to_bits() as u64, 0, crate::nr::ENTRY_UPDATE_CHMOD, 0, 0],
+    )
+    .map(|_| ())
+}
+
+/// stat(path)：解析路径返回节点元数据（SYS_ENTRY_READ stat 动作）。
+pub fn stat(path: &str) -> Result<StatInfo, Error> {
+    let mut buf = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    let mut out = core::mem::MaybeUninit::<StatInfo>::zeroed();
+    let n = crate::syscall::call(
+        SYS_ENTRY_READ,
+        [buf.as_ptr() as u64, out.as_mut_ptr() as u64, core::mem::size_of::<StatInfo>() as u64, crate::nr::ENTRY_READ_STAT, 0, 0],
+    )? as usize;
+    if n < core::mem::size_of::<StatInfo>() {
+        return Err(Error::OutOfRange);
+    }
+    Ok(unsafe { out.assume_init() })
+}
+
+/// fstat(fd)：按 fd 读元数据（SYS_STREAM_FSTAT）。
+pub fn fstat(fd: u64) -> Result<StatInfo, Error> {
+    let mut out = core::mem::MaybeUninit::<StatInfo>::zeroed();
+    let n = crate::syscall::call(
+        SYS_STREAM_FSTAT,
+        [fd, out.as_mut_ptr() as u64, 0, 0, 0, 0],
+    )? as usize;
+    if n < core::mem::size_of::<StatInfo>() {
+        return Err(Error::OutOfRange);
+    }
+    Ok(unsafe { out.assume_init() })
+}
+
 
 /// `chdir(path)`：切换当前进程工作目录（VFS 域 0x45）。
 ///

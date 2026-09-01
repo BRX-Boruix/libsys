@@ -60,6 +60,8 @@ pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14
 /// 方案 A）。把 `old_fd` 的句柄复制到 `new_fd`（先关 `new_fd` 旧句柄），副本
 /// 与原句柄共享同一文件描述/管道端。管道端引用计数由内核同步维护。
 pub const SYS_STREAM_DUP: u32 = nr(domain::STREAM, 0x05); // 0x15
+/// `stream_fstat(fd, out_buf_ptr) -> len`：按 fd 读元数据（收 `StatInfo` 定长结构）。
+pub const SYS_STREAM_FSTAT: u32 = nr(domain::STREAM, 0x07); // 0x17
 
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
@@ -111,6 +113,16 @@ pub const SYS_ENTRY_DELETE: u32 = nr(domain::VFS, op::DELETE); // 0x44
 pub const SYS_ENTRY_CHDIR: u32 = nr(domain::VFS, 0x05); // 0x45
 /// `entry_getcwd(buf_ptr, cap) -> len`：读当前进程工作目录到用户缓冲。
 pub const SYS_ENTRY_GETCWD: u32 = nr(domain::VFS, 0x06); // 0x46
+
+/// SYS_ENTRY_READ 动作编码（a4 区分）：0 = 读取目录（默认）。
+pub const ENTRY_READ_READDIR: u64 = 0;
+/// SYS_ENTRY_READ 动作编码（a4 区分）：1 = stat（解析路径返回元数据结构）。
+pub const ENTRY_READ_STAT: u64 = 1;
+
+/// SYS_ENTRY_UPDATE 动作编码（a4 区分）：0 = rename（默认）。
+pub const ENTRY_UPDATE_RENAME: u64 = 0;
+/// SYS_ENTRY_UPDATE 动作编码（a4 区分）：1 = chmod（设置权限）。
+pub const ENTRY_UPDATE_CHMOD: u64 = 1;
 
 // ---------- 5. DEVICE Domain (0x50, UIO Sandboxing) ----------
 /// `driver_register(name_ptr, len) -> uio_id`：注册用户态驱动。
