@@ -54,7 +54,7 @@ impl Task {
     }
 
     /// 等待指定子任务退出（阻塞）。
-    pub fn waitpid(target_pid: usize) -> Result<u64, Error> {
+    pub fn waitpid(target_pid: usize) -> Result<crate::process::WaitResult, Error> {
         // 当前仅支持等待任意子进程（WAIT_ANY 语义）；target_pid 精确匹配
         // 留待后续扩展。
         let _ = target_pid;

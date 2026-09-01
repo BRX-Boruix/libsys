@@ -123,8 +123,24 @@ pub fn yield_now() -> Result<(), Error> {
 /// 与内核侧 `task::scheduler::WAIT_ANY` 同值（`usize::MAX` / `u64::MAX`）。
 pub const WAIT_ANY: u64 = u64::MAX;
 
-/// `waitpid_any()`：等待任意直接子进程退出，返回其退出码。
+/// waitpid 收割结果：被收尸子进程的 pid 与其退出码（POSIX waitpid 返回 pid、
+/// status 承载退出码的语义在 libc 层拆分，此处两者一并真实交付）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaitResult {
+    /// 被收尸的子进程 pid。
+    pub pid: u64,
+    /// 子进程退出码。
+    pub code: u64,
+}
+
+/// `waitpid_any()`：等待任意直接子进程退出，返回被收尸子进程的 `(pid, code)`。
 /// 阻塞当前进程直到任一子进程退出。无子进程时返回 `Err(NotFound)`。
-pub fn waitpid_any() -> Result<u64, Error> {
-    crate::syscall::call(SYS_TASK_WAIT, [WAIT_ANY, 0, 0, 0, 0, 0])
+/// 内核交付协议：rax=退出码、r10=pid（同步路径经 aux_pid、阻塞路径经
+/// saved.r10，两条路径一致），故用 `invoke_capture_r10` 同时取回两者。
+pub fn waitpid_any() -> Result<WaitResult, Error> {
+    let (ret, r10) = crate::syscall::invoke_capture_r10(SYS_TASK_WAIT, WAIT_ANY, 0, 0, 0, 0, 0);
+    if ret & (1u64 << 63) != 0 {
+        return Err(crate::error::Error::from_errno((ret as i64).wrapping_neg() as i32));
+    }
+    Ok(WaitResult { pid: r10, code: ret })
 }

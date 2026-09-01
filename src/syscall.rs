@@ -32,6 +32,34 @@ pub fn invoke(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64, a6: u64) -> 
     ret
 }
 
+/// 触发一次系统调用并额外捕获返回帧 `r10`（`int 0x80` 后 r10 即返回帧值）。
+///
+/// 仅 waitpid 使用：内核把退出码写 `rax`、被收尸子进程 pid 写 `r10`（同步路径
+/// 经 `SyscallFrame.aux_pid` 由架构层写回，阻塞路径经 `saved.r10` 交付）。返回
+/// `(ret, r10)` 原始值，错误位由调用方解包。
+#[inline]
+pub fn invoke_capture_r10(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64, a6: u64) -> (u64, u64) {
+    let ret: u64;
+    let r10_out: u64;
+    unsafe {
+        core::arch::asm!(
+            "int 0x80",
+            inlateout("rax") nr as u64 => ret,
+            in("rdi") a1,
+            in("rsi") a2,
+            in("rdx") a3,
+            in("r10") a4,
+            in("r8") a5,
+            in("r9") a6,
+            lateout("r10") r10_out,
+            lateout("rcx") _,
+            lateout("r11") _,
+            options(nostack),
+        );
+    }
+    (ret, r10_out)
+}
+
 /// 触发系统调用并解包为 Rust 风格 `Result<u64, Error>`。
 ///
 /// `bit63` 置位 = 错误，取 `-ret` 得 errno，映射回 [`Error`]。
