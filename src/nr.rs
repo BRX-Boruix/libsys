@@ -109,8 +109,12 @@ pub const SYS_TASK_THREAD_JOIN: u32 = nr(domain::TASK, 0x06); // 0x36
 /// TASK 域扩展动词 0x07。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_SET_FS_BASE`
 /// 同值、注释互指。
 pub const SYS_TASK_SET_FS_BASE: u32 = nr(domain::TASK, 0x07); // 0x37
-
-// ---------- 4. VFS Domain (0x40) ----------
+/// `gettid() -> tid`：调用线程自己的 pid（threads.md T2-6）。TASK 域扩展动词 0x08。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_GETTID` 同值、注释互指。
+pub const SYS_TASK_GETTID: u32 = nr(domain::TASK, 0x08); // 0x38
+/// `getpid() -> pid`：所在线程组组长 pid（POSIX 进程 id / tgid）。TASK 域扩展动词 0x09。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_GETPID` 同值、注释互指。
+pub const SYS_TASK_GETPID: u32 = nr(domain::TASK, 0x09); // 0x39
 /// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。
 pub const SYS_ENTRY_CREATE: u32 = nr(domain::VFS, op::CREATE); // 0x41
 /// ENTRY_CREATE 的 kind：创建目录（ADR-014 §4.4 `kind=DIR/DIRECTORY`）。

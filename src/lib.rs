@@ -57,7 +57,7 @@ pub use io::{
 };
 pub use mem::{brk, mmap, munmap};
 pub use pipe::pipe_create;
-pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any, yield_now, WAIT_ANY};
+pub use process::{exec, exec_path, exit, getpid, gettid, kill, ps, ps_list, waitpid_any, yield_now, PsEntry, WAIT_ANY};
 pub use random::bytes as random_bytes;
 
 pub use system::info;

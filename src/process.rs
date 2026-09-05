@@ -1,7 +1,7 @@
 //! 任务与进程（TASK 域）薄封装（遵循 ADR-014）。
 
 use crate::error::Error;
-use crate::nr::{SYS_TASK_EXIT, SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT};
+use crate::nr::{SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID, SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT};
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
 pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
@@ -104,6 +104,18 @@ pub fn ps_list() -> Result<alloc::vec::Vec<PsEntry>, Error> {
 /// `kill(pid, sig) -> 0`：向进程发送信号（统一走 SYS_TASK_SIGNAL）。
 pub fn kill(pid: u64, sig: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_TASK_SIGNAL, [pid, sig, 0, 0, 0, 0])
+}
+
+/// `gettid() -> tid`：返回调用线程自己的 pid（线程 id，threads.md T2-6）。BORUIX 每线程一个
+/// pid；组长 pid==tgid，组员 pid==线程 id。POSIX 线程据此查自身线程 id（写进其 Tcb.tid）。
+pub fn gettid() -> Result<u64, Error> {
+    crate::syscall::call(SYS_TASK_GETTID, [0, 0, 0, 0, 0, 0])
+}
+
+/// `getpid() -> pid`：返回所在线程组组长 pid（POSIX 进程 id / tgid）。替代读 /processes/list 扫
+/// Running 的脆弱启发（多线程/SMP 下会挑错成员）。
+pub fn getpid() -> Result<u64, Error> {
+    crate::syscall::call(SYS_TASK_GETPID, [0, 0, 0, 0, 0, 0])
 }
 
 /// `exit(code)`：终止当前进程。永不返回。
