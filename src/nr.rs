@@ -1,4 +1,4 @@
-//! 系统调用号定义——遵循 ADR-014 4x4 对象-动词正交架构与规范。
+﻿//! 系统调用号定义——遵循 ADR-014 4x4 对象-动词正交架构与规范。
 //!
 //! 编码统一采用 `(Resource << 4) | Verb`：
 //! - Resources: STREAM (0x10), MEMORY (0x20), TASK (0x30), VFS (0x40), DEVICE (0x50)
@@ -95,6 +95,15 @@ pub const SYS_TASK_WAIT: u32 = nr(domain::TASK, op::READ); // 0x32
 pub const SYS_TASK_SIGNAL: u32 = nr(domain::TASK, op::WRITE); // 0x33
 /// `task_exit(code) -> !`：终止当前任务。
 pub const SYS_TASK_EXIT: u32 = nr(domain::TASK, op::DELETE); // 0x34
+/// `thread_spawn(entry, user_stack_top) -> tid`：在调用方线程组（组长 = 调用方
+/// 自身进程）内派生一个**同组新调度单元**（线程，T1-7 / ADR-035 D1 / PRE-6）。共享组长
+/// 地址空间/fd/cwd/identity，装配各自 entry + 用户栈。TASK 域扩展动词 0x05。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_THREAD_SPAWN` 同值、注释互指。
+pub const SYS_TASK_THREAD_SPAWN: u32 = nr(domain::TASK, 0x05); // 0x35
+/// `thread_join(tid) -> code`：等价组长对**具体组员 pid** 的 waitpid 收尸取退出码
+/// （T1-3 单目标 join 交付）。TASK 域扩展动词 0x06。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_THREAD_JOIN` 同值、注释互指。
+pub const SYS_TASK_THREAD_JOIN: u32 = nr(domain::TASK, 0x06); // 0x36
 
 // ---------- 4. VFS Domain (0x40) ----------
 /// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。

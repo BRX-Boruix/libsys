@@ -46,6 +46,7 @@ mod random;
 mod start;
 mod sync;
 mod system;
+mod thread;
 mod time;
 mod volume;
 
@@ -60,6 +61,7 @@ pub use process::{PsEntry, exec, exec_path, exit, kill, ps, ps_list, waitpid_any
 pub use random::bytes as random_bytes;
 
 pub use system::info;
+pub use thread::{thread_exit, thread_join, thread_spawn};
 pub use time::{now, read_wall_clock, sleep, WallClock};
 
 pub use object::{Stream, Sync, Task, Vfs};
