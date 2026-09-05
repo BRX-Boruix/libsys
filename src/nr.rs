@@ -1,4 +1,4 @@
-﻿//! 系统调用号定义——遵循 ADR-014 4x4 对象-动词正交架构与规范。
+//! 系统调用号定义——遵循 ADR-014 4x4 对象-动词正交架构与规范。
 //!
 //! 编码统一采用 `(Resource << 4) | Verb`：
 //! - Resources: STREAM (0x10), MEMORY (0x20), TASK (0x30), VFS (0x40), DEVICE (0x50)
@@ -104,6 +104,11 @@ pub const SYS_TASK_THREAD_SPAWN: u32 = nr(domain::TASK, 0x05); // 0x35
 /// （T1-3 单目标 join 交付）。TASK 域扩展动词 0x06。
 /// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_THREAD_JOIN` 同值、注释互指。
 pub const SYS_TASK_THREAD_JOIN: u32 = nr(domain::TASK, 0x06); // 0x36
+/// `set_fs_base(base) -> 0`：把当前线程 `IA32_FS_BASE` 设为 `base`（threads.md T2-1）。
+/// RDMSR/WRMSR 是 CPL0 指令，用户态直写会 #GP，故写侧走本 syscall；读侧用 `fs:[0]` 段寻址。
+/// TASK 域扩展动词 0x07。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_SET_FS_BASE`
+/// 同值、注释互指。
+pub const SYS_TASK_SET_FS_BASE: u32 = nr(domain::TASK, 0x07); // 0x37
 
 // ---------- 4. VFS Domain (0x40) ----------
 /// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。

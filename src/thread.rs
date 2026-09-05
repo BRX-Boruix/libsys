@@ -12,7 +12,7 @@
 //!   组员调 = 仅该成员单体退出、留 zombie 供组长 join，不杀整组。故不新增 nr。
 
 use crate::error::Error;
-use crate::nr::{SYS_TASK_THREAD_JOIN, SYS_TASK_THREAD_SPAWN};
+use crate::nr::{SYS_TASK_SET_FS_BASE, SYS_TASK_THREAD_JOIN, SYS_TASK_THREAD_SPAWN};
 
 /// `thread_spawn(entry, user_stack_top) -> tid`：在调用方线程组（组长 = 调用方自身
 /// 进程）内派生一个同组新线程并运行于 `entry`，使用用户态已 mmap 的独立栈
@@ -21,6 +21,23 @@ use crate::nr::{SYS_TASK_THREAD_JOIN, SYS_TASK_THREAD_SPAWN};
 /// 内核以调用方自身进程的 tgid 为组长（组长/组员调用本函数都派生到同一组长组）。
 pub fn thread_spawn(entry: u64, user_stack_top: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_TASK_THREAD_SPAWN, [entry, user_stack_top, 0, 0, 0, 0])
+}
+
+/// `thread_spawn_with_starter(entry, user_stack_top, starter) -> tid`：同 `thread_spawn`，
+/// 额外把 `starter`（T2-0/ADR-035 D6）作为新线程首跑 `rdi` 初值交给入口——内核经
+/// `initial_frame` 置入。供 libc/libpthread 线程引导把其 `Tcb`/参数块地址递给线程入口
+/// （入口以 `rdi` 收到 starter 后据此定位每线程控制块）。默认 0 的 `thread_spawn` 等价。
+pub fn thread_spawn_with_starter(entry: u64, user_stack_top: u64, starter: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_TASK_THREAD_SPAWN, [entry, user_stack_top, starter, 0, 0, 0])
+}
+
+/// `set_fs_base(base) -> Result<(), Error>`：把当前线程的 `IA32_FS_BASE`（x86-64 MSR
+/// 0xC0000100）设为 `base`（threads.md T2-1）。内核在 CPL0 经 wrmsr 写活动 FS base（切出时
+/// 自动归档），用户态 RDMSR/WRMSR 是 CPL0 特权指令会 #GP，故写侧走本 syscall；读侧用户态用
+/// `fs:[0]` 段寻址即可，无需本调用。`base` 通常是本线程 mmap 的每线程 `Tcb` 地址（errno/TLS
+/// 槽基址）。返回 0。
+pub fn set_fs_base(base: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_TASK_SET_FS_BASE, [base, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
 /// `thread_join(tid) -> code`：组长阻塞等待**具体组员线程** `tid` 退出并收尸，
