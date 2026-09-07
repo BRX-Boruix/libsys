@@ -20,6 +20,8 @@ pub mod domain {
     pub const SYNC: u32 = 0x70;
     /// SIGNAL 域（ADR-034 PROPOSED）：可编程信号派发（sigaction/sigprocmask/rt_sigreturn）。
     pub const SIGNAL: u32 = 0x80;
+    /// POWER domain (0x90): machine power-off / reboot.
+    pub const POWER: u32 = 0x90;
 }
 
 pub mod op {
@@ -190,6 +192,14 @@ pub const SYS_SIGNAL_MASK: u32 = nr(domain::SIGNAL, op::READ); // 0x82
 pub const SYS_SIGNAL_ACTION: u32 = nr(domain::SIGNAL, op::WRITE); // 0x83
 /// `signal_return()`：handler 返回后恢复原帧（rt_sigreturn）。
 pub const SYS_SIGNAL_RETURN: u32 = nr(domain::SIGNAL, op::DELETE); // 0x84
+
+// ---------- 9. POWER Domain (0x90, ADR-036) ----------
+/// `power_off()` -> never：请求 ACPI 软关机（S5），成功后机器断电、永不返回。
+/// 无可用 S5 信息/电源管理不可用时返回错误，调用方保留在用户态。
+pub const SYS_POWER_OFF: u32 = nr(domain::POWER, 0x01); // 0x91
+/// `power_reboot()` -> never：请求系统重启。成功后机器复位、永不返回。
+/// 复位机制不可用时返回错误。
+pub const SYS_POWER_REBOOT: u32 = nr(domain::POWER, 0x02); // 0x92
 
 /// `exec` 程序池索引：shell（PID 2）。
 pub const PROG_SHELL: u64 = 1;

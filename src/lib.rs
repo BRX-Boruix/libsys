@@ -41,6 +41,7 @@ mod io;
 mod mem;
 mod object;
 mod pipe;
+mod power;
 mod process;
 mod random;
 mod start;
@@ -57,6 +58,7 @@ pub use io::{
 };
 pub use mem::{brk, mmap, munmap};
 pub use pipe::pipe_create;
+pub use power::{power_off, reboot};
 pub use process::{exec, exec_path, exit, getpid, gettid, kill, ps, ps_list, waitpid_any, yield_now, PsEntry, WAIT_ANY};
 pub use random::bytes as random_bytes;
 
