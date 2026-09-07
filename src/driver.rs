@@ -1,0 +1,74 @@
+//! DEVICE (0x50) domain user-driver (UIO) syscall thin wrappers (ADR-008 / M11).
+//!
+//! Lets a userspace process act as a driver for a real device: register a claim,
+//! then map that device's MMIO window into this process's address space
+//! (uncacheable pages) and poke the hardware registers directly from user mode -
+//! the same idea as Linux Userspace I/O (UIO).
+//!
+//! Authorisation (KA4): registration is a unique claim (one live claim per
+//! device); claim locates by uio_id and checks caller ownership. The device
+//! MMIO window is kernel-registered fact (published from PCI BARs); a user
+//! supplied phys/size never takes effect. On process exit/crash the kernel
+//! auto-releases its claim (0 panic).
+//!
+//! Each call mirrors the same-named kernel/syscall.rs implementation (dual-side ABI).
+
+use crate::error::Error;
+use crate::nr::*;
+use alloc::string::String;
+
+/// Max device name (DriverHub register name) length, matching kernel uio::UIO_DEV_NAME_MAX.
+const UIO_DEV_NAME_MAX: usize = 32;
+
+/// driver_register(dev_name) -> uio_id : register this process as the driver
+/// instance for dev_name and claim it. Returns uio_id (for later claim/unregister).
+///
+/// The device must be really registered in the kernel DriverHub (else NotFound -
+/// no arbitrary-name "ghost device" claims); duplicate registration returns
+/// AlreadyExists (unique claim).
+pub fn driver_register(dev_name: &str) -> Result<u64, Error> {
+    if dev_name.is_empty() || dev_name.len() > UIO_DEV_NAME_MAX {
+        return Err(Error::InvalidParam);
+    }
+    let mut buf = [0u8; UIO_DEV_NAME_MAX];
+    buf[..dev_name.len()].copy_from_slice(dev_name.as_bytes());
+    crate::syscall::call(
+        SYS_DRIVER_REGISTER,
+        [buf.as_ptr() as u64, dev_name.len() as u64, 0, 0, 0, 0],
+    )
+}
+
+/// driver_query(dev_name) -> String : query the device binding state, returns compact JSON.
+/// Shape: {"device":"<name>","binding":"driver:<d>","uio_claimed":<bool>};
+/// unknown device -> {"error":"not_found","device":"<name>"}.
+pub fn driver_query(dev_name: &str) -> Result<String, Error> {
+    if dev_name.is_empty() || dev_name.len() > UIO_DEV_NAME_MAX {
+        return Err(Error::InvalidParam);
+    }
+    let mut name = [0u8; UIO_DEV_NAME_MAX];
+    name[..dev_name.len()].copy_from_slice(dev_name.as_bytes());
+    let mut out = [0u8; 512];
+    let n = crate::syscall::call(
+        SYS_DRIVER_QUERY,
+        [name.as_ptr() as u64, out.as_mut_ptr() as u64, out.len() as u64, 0, 0, 0],
+    )? as usize;
+    if n == 0 || n > out.len() {
+        return Err(Error::OutOfRange);
+    }
+    let s = core::str::from_utf8(&out[..n]).map_err(|_| Error::InvalidParam)?;
+    Ok(String::from(s))
+}
+
+/// driver_claim(uio_id) -> user_vaddr : map the claimed device's MMIO window into
+/// this process's address space (uncacheable), return the user virtual address.
+/// Authorisation by uio_id + caller pid; device with no window -> NotSupported.
+pub fn driver_claim(uio_id: u64) -> Result<u64, Error> {
+    // Kernel ignores a2/a3 (legacy mmio_base/size - window is kernel fact); a1 = uio_id.
+    crate::syscall::call(SYS_DRIVER_CLAIM, [uio_id, 0, 0, 0, 0, 0])
+}
+
+/// driver_unregister(uio_id) -> () : drop this process's driver claim, freeing the slot
+/// so the device becomes claimable again. Ownership check same as claim.
+pub fn driver_unregister(uio_id: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_DRIVER_UNREGISTER, [uio_id, 0, 0, 0, 0, 0]).map(|_| ())
+}

@@ -42,6 +42,7 @@ mod mem;
 mod object;
 mod pipe;
 mod power;
+mod driver;
 mod process;
 mod random;
 mod start;
@@ -71,6 +72,8 @@ pub use object::{Stream, Sync, Task, Vfs};
 pub use sync::{sync_create, sync_delete, sync_wait, sync_wake};
 
 pub use volume::{DeviceEventInfo, ProbeStatus, device_probe, next_device_event, next_device_event_wait, volume_list, volume_mount, volume_unmount};
+
+pub use driver::{driver_claim, driver_query, driver_register, driver_unregister};
 
 use core::panic::PanicInfo;
 
