@@ -85,3 +85,26 @@ pub fn driver_irq_wait(uio_id: u64, timeout_ns: u64) -> Result<bool, Error> {
     let r = crate::syscall::call(SYS_DRIVER_IRQ_WAIT, [uio_id, timeout_ns, 0, 0, 0, 0])?;
     Ok(r == 1)
 }
+
+/// driver_dma_alloc(bytes) -> user_vaddr (stage-2 DMA coherent buffer).
+///
+/// Allocate a physically-contiguous, uncacheable(PCD)-mapped RAM buffer the caller
+/// can write and hand to a claimed device via its physical address (driver_dma_phys).
+/// System-only. Buffer is auto-reclaimed when the process exits. bytes==0 or
+/// >64MiB -> InvalidParam; physical allocation failure -> OutOfMemory.
+pub fn driver_dma_alloc(bytes: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_DRIVER_DMA_ALLOC, [bytes, 0, 0, 0, 0, 0])
+}
+
+/// driver_dma_phys(vaddr) -> phys : base physical address of a DMA buffer the caller
+/// owns (vaddr is its start). Used to program the device DMA descriptor. Non-DMA
+/// vaddr -> NotFound.
+pub fn driver_dma_phys(vaddr: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_DRIVER_DMA_PHYS, [vaddr, 0, 0, 0, 0, 0])
+}
+
+/// driver_dma_free(vaddr) -> () : release a DMA coherent buffer (unmap + return the
+/// physical frames). Non-DMA vaddr -> NotFound.
+pub fn driver_dma_free(vaddr: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_DRIVER_DMA_FREE, [vaddr, 0, 0, 0, 0, 0]).map(|_| ())
+}

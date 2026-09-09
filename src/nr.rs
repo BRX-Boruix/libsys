@@ -163,6 +163,12 @@ pub const SYS_DRIVER_EVENT_NEXT: u32 = nr(domain::DEVICE, op::EVENT); // 0x57
 pub const SYS_DEVICE_PROBE: u32 = nr(domain::DEVICE, 0x08); // 0x58
 /// `driver_irq_wait(uio_id, timeout_ns) -> 1/0`：等待认领设备中断触发或超时。
 pub const SYS_DRIVER_IRQ_WAIT: u32 = nr(domain::DEVICE, 0x09); // 0x59
+/// `driver_dma_alloc(bytes) -> vaddr`：分配 DMA 一致性缓冲并返回用户起始虚拟地址。
+pub const SYS_DRIVER_DMA_ALLOC: u32 = nr(domain::DEVICE, 0x0A); // 0x5A
+/// `driver_dma_free(vaddr) -> ()`：释放一块 DMA 一致性缓冲。
+pub const SYS_DRIVER_DMA_FREE: u32 = nr(domain::DEVICE, 0x0B); // 0x5B
+/// `driver_dma_phys(vaddr) -> phys`：返回 DMA 缓冲基物理地址（供编程设备描述符）。
+pub const SYS_DRIVER_DMA_PHYS: u32 = nr(domain::DEVICE, 0x0C); // 0x5C
 
 // ---------- 6. VOLUME Domain (0x60, ADR-030) ----------
 /// `volume_mount(dev_name_ptr, out_path_ptr, out_cap) -> len`：挂载一个块设备
