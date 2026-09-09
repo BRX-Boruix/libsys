@@ -73,7 +73,10 @@ pub use sync::{sync_create, sync_delete, sync_wait, sync_wake};
 
 pub use volume::{DeviceEventInfo, ProbeStatus, device_probe, next_device_event, next_device_event_wait, volume_list, volume_mount, volume_unmount};
 
-pub use driver::{driver_claim, driver_query, driver_register, driver_unregister};
+pub use driver::{
+    driver_claim, driver_dma_alloc, driver_dma_free, driver_dma_phys, driver_irq_wait,
+    driver_query, driver_register, driver_unregister,
+};
 
 use core::panic::PanicInfo;
 
