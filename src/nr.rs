@@ -161,6 +161,8 @@ pub const SYS_DRIVER_EVENT_NEXT: u32 = nr(domain::DEVICE, op::EVENT); // 0x57
 /// `ProbeStatus`（alive=0 / gone=1 / notfound=2 / notio=3）。volumed 低频对账
 /// 用它兜底发现"拔除但无事件"的空闲卷（ADR-030 热插拔闭环）。
 pub const SYS_DEVICE_PROBE: u32 = nr(domain::DEVICE, 0x08); // 0x58
+/// `driver_irq_wait(uio_id, timeout_ns) -> 1/0`：等待认领设备中断触发或超时。
+pub const SYS_DRIVER_IRQ_WAIT: u32 = nr(domain::DEVICE, 0x09); // 0x59
 
 // ---------- 6. VOLUME Domain (0x60, ADR-030) ----------
 /// `volume_mount(dev_name_ptr, out_path_ptr, out_cap) -> len`：挂载一个块设备

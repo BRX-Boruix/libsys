@@ -72,3 +72,16 @@ pub fn driver_claim(uio_id: u64) -> Result<u64, Error> {
 pub fn driver_unregister(uio_id: u64) -> Result<(), Error> {
     crate::syscall::call(SYS_DRIVER_UNREGISTER, [uio_id, 0, 0, 0, 0, 0]).map(|_| ())
 }
+
+/// driver_irq_wait(uio_id, timeout_ns) -> bool : block until the claimed device's
+/// interrupt fires (returns true = go service the device) or the timeout elapses
+/// (returns false). Lets a userspace driver be interrupt-driven instead of polling.
+///
+/// Only meaningful for devices with a PCI interrupt line; interrupt-less devices
+/// yield Error::NotSupported. Ownership check same as claim.
+pub fn driver_irq_wait(uio_id: u64, timeout_ns: u64) -> Result<bool, Error> {
+    // 内核返回：1 = 中断已触发待服务；0 = 超时无中断；负值 = 错误（syscall::call
+    // 已解包为 Err）。
+    let r = crate::syscall::call(SYS_DRIVER_IRQ_WAIT, [uio_id, timeout_ns, 0, 0, 0, 0])?;
+    Ok(r == 1)
+}
