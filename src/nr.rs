@@ -22,6 +22,8 @@ pub mod domain {
     pub const SIGNAL: u32 = 0x80;
     /// POWER domain (0x90): machine power-off / reboot.
     pub const POWER: u32 = 0x90;
+    /// AUDIO 域（plan_audio_vfs.md 批次二）：音频管道消费者流控。
+    pub const AUDIO: u32 = 0xA0;
 }
 
 pub mod op {
@@ -169,6 +171,21 @@ pub const SYS_DRIVER_DMA_ALLOC: u32 = nr(domain::DEVICE, 0x0A); // 0x5A
 pub const SYS_DRIVER_DMA_FREE: u32 = nr(domain::DEVICE, 0x0B); // 0x5B
 /// `driver_dma_phys(vaddr) -> phys`：返回 DMA 缓冲基物理地址（供编程设备描述符）。
 pub const SYS_DRIVER_DMA_PHYS: u32 = nr(domain::DEVICE, 0x0C); // 0x5C
+
+// ---------- 6b. AUDIO Domain (0xA0, plan_audio_vfs.md 批次二) ----------
+//
+// 与 VFS 域的分工：读写 PCM **走 VFS 路径**（`open("/devices/audio/dsp")` +
+// `read`/`write`），本域只提供 VFS 无法表达的**流控**动词。
+/// `audio_attach() -> 0`：把当前进程注册为该音频节点的**独占**消费者。
+/// 已有消费者 → `EBUSY`（结构性占用，重试不会成功）。
+pub const SYS_AUDIO_ATTACH: u32 = nr(domain::AUDIO, 0x01); // 0xA1
+/// `audio_detach() -> 0`：注销消费者（仅属主）。非属主 → `EACCES`。
+pub const SYS_AUDIO_DETACH: u32 = nr(domain::AUDIO, 0x02); // 0xA2
+/// `audio_fetch(buf_ptr, len) -> n`：取 PCM（不推进读指针，须 `audio_commit`）。
+/// 无消费者 → `ENOTSUP`；无数据且已附加 → 阻塞等待（有限超时）。
+pub const SYS_AUDIO_FETCH: u32 = nr(domain::AUDIO, 0x03); // 0xA3
+/// `audio_commit(n) -> 0`：提交已消费的 n 字节（推进读指针）。越界 → `EINVAL`。
+pub const SYS_AUDIO_COMMIT: u32 = nr(domain::AUDIO, 0x04); // 0xA4
 
 // ---------- 6. VOLUME Domain (0x60, ADR-030) ----------
 /// `volume_mount(dev_name_ptr, out_path_ptr, out_cap) -> len`：挂载一个块设备

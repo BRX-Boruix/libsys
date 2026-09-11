@@ -43,6 +43,7 @@ mod object;
 mod pipe;
 mod power;
 mod driver;
+pub mod audio;
 mod process;
 mod random;
 mod start;
