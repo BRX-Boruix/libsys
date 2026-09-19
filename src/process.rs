@@ -1,7 +1,10 @@
 //! 任务与进程（TASK 域）薄封装（遵循 ADR-014）。
 
 use crate::error::Error;
-use crate::nr::{SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID, SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT};
+use crate::nr::{
+    DERIVE_FLAGS_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID, SYS_TASK_SIGNAL,
+    SYS_TASK_SPAWN, SYS_TASK_WAIT,
+};
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
 pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
@@ -116,6 +119,32 @@ pub fn gettid() -> Result<u64, Error> {
 /// Running 的脆弱启发（多线程/SMP 下会挑错成员）。
 pub fn getpid() -> Result<u64, Error> {
     crate::syscall::call(SYS_TASK_GETPID, [0, 0, 0, 0, 0, 0])
+}
+
+/// `derive(flags, entry_rsp, entry_rip) -> pid`：**COW 派生子进程**（ADR-038）。
+///
+/// 以调用进程为父派生**新线程组**的子进程：用户地址空间与父共享全部已映射数据
+/// 帧（写时复制），fd/cwd/identity 按 ADR-038 决策逐项继承。子进程在父被本调用
+/// 中断处继续执行。
+///
+/// **返回语义（POSIX fork 铁律）**：父收新子进程 pid（> 0）、子收 0。
+///
+/// `flags` / `entry_rsp` / `entry_rip` 首期必须全为 [`DERIVE_FLAGS_NONE`]（= 0，
+/// 表示继承父当前 RIP/RSP）；非 0 时内核如实返回 `InvalidParam`。
+///
+/// **注意**：本函数返回两次（父一次、子一次），这是 POSIX `fork()` 语义的本质，
+/// 不是错误。调用方**必须**按返回值分流；libc 层的 `fork()` 即据此包装。
+pub fn derive(flags: u64, entry_rsp: u64, entry_rip: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_TASK_DERIVE, [flags, entry_rsp, entry_rip, 0, 0, 0])
+}
+
+/// `derive_inherit() -> pid`：[`derive`] 的**首期唯一合法形态**——继承父当前 RIP/RSP。
+///
+/// 三个保留参数显式钉为 [`DERIVE_FLAGS_NONE`]（=0），使「继承」这一语义在调用点
+/// 成文，而非依赖调用方记得传 0（S13：不留魔法值）。将来 ABI 扩展（带入口的派生）
+/// 会新增独立的命名构造函数，本函数语义**不变**。
+pub fn derive_inherit() -> Result<u64, Error> {
+    derive(DERIVE_FLAGS_NONE, DERIVE_FLAGS_NONE, DERIVE_FLAGS_NONE)
 }
 
 /// `exit(code)`：终止当前进程。永不返回。

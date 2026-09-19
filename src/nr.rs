@@ -119,6 +119,20 @@ pub const SYS_TASK_GETTID: u32 = nr(domain::TASK, 0x08); // 0x38
 /// `getpid() -> pid`：所在线程组组长 pid（POSIX 进程 id / tgid）。TASK 域扩展动词 0x09。
 /// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_GETPID` 同值、注释互指。
 pub const SYS_TASK_GETPID: u32 = nr(domain::TASK, 0x09); // 0x39
+/// `derive(flags, entry_rsp, entry_rip) -> pid`：**COW 派生子进程**（ADR-038）。
+///
+/// 以调用进程为父派生**新线程组**的子进程，用户地址空间与父共享全部已映射
+/// 数据帧（写时复制）。返回语义同 POSIX fork：父收子 pid（>0）、子收 0、失败收 -errno。
+///
+/// `flags`/`entry_rsp`/`entry_rip` 首期必须全为 [`DERIVE_FLAGS_NONE`]（=0，表示继承
+/// 父当前 RIP/RSP）；非 0 内核如实返回 `InvalidParam`，不静默忽略。
+/// TASK 域扩展动词 0x0A。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_DERIVE`
+/// 同值、注释互指。
+pub const SYS_TASK_DERIVE: u32 = nr(domain::TASK, 0x0A); // 0x3A
+/// [`SYS_TASK_DERIVE`] 的 `flags` 保留值：无标志（首期唯一合法取值）。
+///
+/// 与内核 `kernel::syscall::DERIVE_FLAGS_NONE` 同值、语义互指（S13 双侧镜像）。
+pub const DERIVE_FLAGS_NONE: u64 = 0;
 /// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。
 pub const SYS_ENTRY_CREATE: u32 = nr(domain::VFS, op::CREATE); // 0x41
 /// ENTRY_CREATE 的 kind：创建目录（ADR-014 §4.4 `kind=DIR/DIRECTORY`）。
