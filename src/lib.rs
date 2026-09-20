@@ -59,6 +59,12 @@ pub use io::{
     chmod, chown, close, dup2, fstat, getcwd, mkdir, open, pread, pwrite, read, read_dir,
     read_to_end, rename, stat, unlink, write,
 };
+// A2-6 / ADR-040 §3.5.1 G4：显式 ACE 通道的用户态封装与 wire 镜像。
+pub use io::{
+    aces_count, get_aces, set_aces, AceWire, ACE_PERM_EXECUTE, ACE_PERM_READ, ACE_PERM_WRITE,
+    ACE_PRINCIPAL_NAMED_GID, ACE_PRINCIPAL_NAMED_UID, ACE_PRINCIPAL_OTHER, ACE_PRINCIPAL_OWNER,
+    ACE_WIRE_MAX, ACE_WIRE_SIZE,
+};
 pub use mem::{brk, mmap, munmap};
 pub use pipe::pipe_create;
 pub use power::{power_off, reboot};

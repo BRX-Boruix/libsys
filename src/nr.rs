@@ -169,6 +169,10 @@ pub const SYS_ENTRY_GETCWD: u32 = nr(domain::VFS, 0x06); // 0x46
 pub const ENTRY_READ_READDIR: u64 = 0;
 /// SYS_ENTRY_READ 动作编码（a4 区分）：1 = stat（解析路径返回元数据结构）。
 pub const ENTRY_READ_STAT: u64 = 1;
+/// SYS_ENTRY_READ 动作编码（a4 区分）：2 = 读取显式 ACE 列表（A2-6 / ADR-040 §3.5.1 G4）。
+/// a1=path_ptr，a2=out_ptr（收 `[AceWire; cap]`），a3=cap（0 合法＝探测条数）。
+/// 返回实际条数；节点 ACE 数 > cap 且 cap != 0 时如实 `NoSpace`（**不截断**）。
+pub const ENTRY_READ_ACES: u64 = 2;
 
 /// SYS_ENTRY_UPDATE 动作编码（a4 区分）：0 = rename（默认）。
 pub const ENTRY_UPDATE_RENAME: u64 = 0;
@@ -178,6 +182,10 @@ pub const ENTRY_UPDATE_CHMOD: u64 = 1;
 /// a1=path_ptr，a2=uid，a3=gid（ADR-014 §4.4「更新节点元数据」动词；
 /// 定长寄存器参数，无用户指针拷贝面）。
 pub const ENTRY_UPDATE_CHOWN: u64 = 2;
+/// SYS_ENTRY_UPDATE 动作编码（a4 区分）：3 = 设置显式 ACE 列表（A2-6 / G4）。
+/// a1=path_ptr，a2=aces_ptr（`[AceWire; count]`），a3=count（0 即清空）。
+/// **整表替换**；只改显式 ACE，classic/属主/门禁位原样。
+pub const ENTRY_UPDATE_SET_ACES: u64 = 3;
 
 // ---------- 5. DEVICE Domain (0x50, UIO Sandboxing) ----------
 /// `driver_register(name_ptr, len) -> uio_id`：注册用户态驱动。

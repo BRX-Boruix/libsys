@@ -232,6 +232,72 @@ const _: () = {
     assert!(core::mem::offset_of!(IdentityInfo, caps) == 8);
 };
 
+/// 显式 ACE 的 wire 形态（A2-6 / ADR-040 §3.5.1 G4；与内核 `vfs::inode::AceWire`
+/// 同布局的镜像）。
+///
+/// `#[repr(C)]` 定长 **24 字节**——跨边界真实数据合约，任一侧改字段必须同变更同步
+/// （PRE-12 纪律，同 `StatInfo`/`IdentityInfo`）。定长数组形态满足 ADR-040 §2.10
+/// 「参数只用定长数字」，且**不**触碰既有 `StatInfo` 布局（既有 stat ABI 零破坏）。
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AceWire {
+    /// 主体类别：0=Owner、1=NamedUid、2=NamedGid、3=Other。
+    pub principal_kind: u32,
+    /// 主体 id（NamedUid/NamedGid 的 uid/gid；Owner/Other 须为 0）。
+    pub principal_id: u32,
+    /// 1=Allow，0=Deny。
+    pub allow: u32,
+    /// 权限位集：Read=1、Write=2、Execute=4（取值范围 0..=7）。
+    pub perms: u32,
+    /// 目录继承标记 0/1。
+    pub inherit: u32,
+    /// 保留位（须为 0）。
+    pub reserved: u32,
+}
+
+/// 主体类别编码（与内核同名常量同值，S13 单点对齐）。
+pub const ACE_PRINCIPAL_OWNER: u32 = 0;
+pub const ACE_PRINCIPAL_NAMED_UID: u32 = 1;
+pub const ACE_PRINCIPAL_NAMED_GID: u32 = 2;
+pub const ACE_PRINCIPAL_OTHER: u32 = 3;
+
+/// 权限位编码（`AceWire::perms`）。
+pub const ACE_PERM_READ: u32 = 1;
+pub const ACE_PERM_WRITE: u32 = 2;
+pub const ACE_PERM_EXECUTE: u32 = 4;
+
+/// 单条 wire ACE 的字节大小（`AceWire` 定长；与内核 `ACE_WIRE_SIZE` 同值）。
+pub const ACE_WIRE_SIZE: usize = 24;
+
+/// 一次 ACE 传输的最大条数（与内核 `ACE_WIRE_MAX` 同值）。
+pub const ACE_WIRE_MAX: usize = 64;
+
+impl AceWire {
+    /// 构造 Allow/Deny ACE 的便捷形态（`reserved` 恒 0）。
+    pub const fn new(principal_kind: u32, principal_id: u32, allow: bool, perms: u32, inherit: bool) -> Self {
+        Self {
+            principal_kind,
+            principal_id,
+            allow: allow as u32,
+            perms,
+            inherit: inherit as u32,
+            reserved: 0,
+        }
+    }
+}
+
+/// A2-6：**两侧镜像一致性断言**（编译期钉死，同 `StatInfo`/`IdentityInfo` 纪律）。
+/// 布局：六字段各 u32，偏移 0/4/8/12/16/20，sizeof=24。
+const _: () = {
+    assert!(core::mem::size_of::<AceWire>() == 24, "AceWire layout drifted: sync kernel mirror");
+    assert!(core::mem::offset_of!(AceWire, principal_kind) == 0);
+    assert!(core::mem::offset_of!(AceWire, principal_id) == 4);
+    assert!(core::mem::offset_of!(AceWire, allow) == 8);
+    assert!(core::mem::offset_of!(AceWire, perms) == 12);
+    assert!(core::mem::offset_of!(AceWire, inherit) == 16);
+    assert!(core::mem::offset_of!(AceWire, reserved) == 20);
+};
+
 impl StatInfo {
     /// 节点类型稳定数字标签（与内核 StatInfo::type_tag 一致）。
     pub fn type_tag(t: u32) -> u32 {
@@ -475,6 +541,92 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), Error> {
         [buf.as_ptr() as u64, uid as u64, gid as u64, crate::nr::ENTRY_UPDATE_CHOWN, 0, 0],
     )
     .map(|_| ())
+}
+
+/// 设置显式 ACE 列表（A2-6 / ADR-040 §3.5.1 G4；SYS_ENTRY_UPDATE 动作 3）。
+///
+/// **整表替换**：`aces` 为空即清空显式列表。只改显式 ACE——classic 三段、属主、
+/// 门禁位一律原样（与 [`chmod`] 的"只改 mode"纪律对称）。
+///
+/// 授权面：属主或 `CAP_OWNER`（ACE 列表即访问策略本体，能改它等于能改节点权限）。
+/// 非属主且无 `CAP_OWNER` → `EACCES`。
+///
+/// 失败语义：任一条 ACE 畸形（未知主体类别 / `perms > 7` / `allow|inherit > 1` /
+/// `reserved != 0` / Owner|Other 携带非 0 id）→ `InvalidParam`，**且整表不写回**
+/// （不留半套策略）。`aces.len() > ACE_WIRE_MAX` → `InvalidParam`。
+pub fn set_aces(path: &str, aces: &[AceWire]) -> Result<(), Error> {
+    let mut buf = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    if aces.len() > ACE_WIRE_MAX {
+        return Err(Error::OutOfRange);
+    }
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    crate::syscall::call(
+        SYS_ENTRY_UPDATE,
+        [
+            buf.as_ptr() as u64,
+            aces.as_ptr() as u64,
+            aces.len() as u64,
+            crate::nr::ENTRY_UPDATE_SET_ACES,
+            0,
+            0,
+        ],
+    )
+    .map(|_| ())
+}
+
+/// 读取显式 ACE 列表（A2-6 / ADR-040 §3.5.1 G4；SYS_ENTRY_READ 动作 2）。
+///
+/// 返回节点**显式** ACE（不含三条隐式尾部 ACE——那是 classic 三段的展开，
+/// 经 [`stat`] 的 `perms` 字段即可读）。授权面与 stat 同源：READ 权限。
+///
+/// **不截断**：节点 ACE 数 > `out.len()` 时如实 `NoSpace`——截断会让调用方
+/// 误以为已拿到全部策略（安全面伪成功）。故先用 `cap = 0` 探测条数、再按需
+/// 扩容，是推荐用法（`aces_count(path)` 即该形态的便利封装）。
+///
+/// 返回实际条数。
+pub fn get_aces(path: &str, out: &mut [AceWire]) -> Result<usize, Error> {
+    let mut buf = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    if out.len() > ACE_WIRE_MAX {
+        return Err(Error::OutOfRange);
+    }
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    crate::syscall::call(
+        SYS_ENTRY_READ,
+        [
+            buf.as_ptr() as u64,
+            out.as_mut_ptr() as u64,
+            out.len() as u64,
+            crate::nr::ENTRY_READ_ACES,
+            0,
+            0,
+        ],
+    )
+    .map(|n| n as usize)
+}
+
+/// 探测节点显式 ACE **条数**（A2-6）：`cap = 0` 的合法探测调用，不写任何字节。
+///
+/// 便利封装 `get_aces` 的定长数组用法：`aces_count` 后按需分配再 `get_aces`。
+pub fn aces_count(path: &str) -> Result<usize, Error> {
+    let mut buf = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    crate::syscall::call(
+        SYS_ENTRY_READ,
+        [buf.as_ptr() as u64, 0, 0, crate::nr::ENTRY_READ_ACES, 0, 0],
+    )
+    .map(|n| n as usize)
 }
 
 /// stat(path)：解析路径返回节点元数据（SYS_ENTRY_READ stat 动作）。
