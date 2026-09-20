@@ -164,6 +164,8 @@ impl Permissions {
 /// stat 结果（与内核 vfs::inode::StatInfo 同布局的镜像）。
 ///
 /// #[repr(C)] 固定布局，与内核 ABI 逐字段一致——这是跨边界的真实数据合约，任一例改字段必须同步另一例。
+/// A1-4 / ADR-040 §2.4：属主字段**尾部追加**（owner_uid/owner_gid），与内核
+/// 侧同变更同步（PRE-12 纪律：改不同步即静默错位伪数据）。
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StatInfo {
@@ -171,7 +173,8 @@ pub struct StatInfo {
     pub node_type: u32,
     /// 文件字节大小。
     pub size: u64,
-    /// 权限位（Permissions::to_bits 编码）。
+    /// 权限位（classic 9 位直通 + 门禁 bit9，与内核 `AccessPolicy::to_wire`
+    /// 同编码；旧 ≤0o7 披露位由内核 `from_wire` 兼容扩展）。
     pub perms: u32,
     /// 创建时间（Unix 秒；字段不存在时 0）。
     pub created_time: u64,
@@ -179,7 +182,23 @@ pub struct StatInfo {
     pub modified_time: u64,
     /// 变更时间（Unix 秒）。
     pub changed_time: u64,
+    /// 属主 uid（A1-4 尾部追加；内核自节点策略本体投影真值）。
+    pub owner_uid: u32,
+    /// 属主 gid（同上）。
+    pub owner_gid: u32,
 }
+
+/// PRE-12 / A1-4：**两侧镜像一致性断言**（编译期钉死）。
+///
+/// 字面值与 kernel `vfs::inode::StatInfo` 侧的断言**逐值相同**——任一侧
+/// 改字段而另一侧未同步，本侧字面断言即编译失败（S06 跨边界数据契约）。
+/// 布局：node_type@0 size@8 perms@16 created@24 modified@32 changed@40
+/// owner_uid@48 owner_gid@52，sizeof=56（repr(C)，尾部追加只增不改）。
+const _: () = {
+    assert!(core::mem::size_of::<StatInfo>() == 56, "StatInfo layout drifted: sync kernel mirror");
+    assert!(core::mem::offset_of!(StatInfo, owner_uid) == 48);
+    assert!(core::mem::offset_of!(StatInfo, owner_gid) == 52);
+};
 
 impl StatInfo {
     /// 节点类型稳定数字标签（与内核 StatInfo::type_tag 一致）。
