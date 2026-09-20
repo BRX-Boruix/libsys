@@ -72,6 +72,11 @@ pub use process::{
     PsEntry, WAIT_ANY, WaitResult, derive, derive_inherit, exec, exec_path, exit,
     getpid, gettid, kill, ps, ps_list, waitpid_any, yield_now,
 };
+// A2-1 / ADR-040 §3.5 G1：身份查询与变更。**此前未在 crate 根重导出**——A2-1 落地时
+// 只定义了 `process::identity_*`，`process` 模块私有，故用户程序实际**无法调用**它们
+// （真实用户态 E2E `trave2e` 编译时暴露：`no identity_set in the root`）。此为可达性
+// 缺口，非新增功能；一并补齐 `IdentityInfo` 的根重导出。
+pub use process::{IdentityInfo, identity_query, identity_set};
 pub use random::bytes as random_bytes;
 
 pub use system::info;
