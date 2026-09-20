@@ -115,6 +115,13 @@ pub struct Permissions {
     pub system_only: bool,
 }
 
+/// 系统门禁位（wire bit9，ADR-040 §2.5 线格式 ABI 常量）。
+///
+/// chmod 通道唯一写入门径：`chmod(path, classic | GATE_SYSTEM_BIT)`。
+/// POSIX `mode_t` 语义只占 classic 9 位（0o777），bit9 仅限显式声明的
+/// 门禁写入（如 shell 驱动安装的 System-only 收紧）。
+pub const GATE_SYSTEM_BIT: u32 = 1 << 9;
+
 impl Permissions {
     pub const fn all() -> Self {
         Self {
@@ -406,8 +413,13 @@ pub fn rename(old_path: &str, new_path: &str) -> Result<(), Error> {
     .map(|_| ())
 }
 
-/// 设置权限（SYS_ENTRY_UPDATE chmod 动作）：把节点权限设为 perms。
-pub fn chmod(path: &str, perms: Permissions) -> Result<(), Error> {
+/// 设置权限（SYS_ENTRY_UPDATE chmod 动作）：wire classic 位直通（A1-7）。
+///
+/// `bits` = classic 9 位（0o777）+ 可选门禁位 [`GATE_SYSTEM_BIT`]。**不再
+/// 经 `Permissions` 布尔标签中转**——布尔结构 `to_bits()` 恒 ≤0o7，经内核
+/// 等值三段扩展会坍缩成三段同值（chmod 0644 → 0111 权限畸变），无法表达
+/// 三段；PRE-3「折叠编码=权限放大」在线格式的直接消解。
+pub fn chmod(path: &str, bits: u32) -> Result<(), Error> {
     let mut buf = [0u8; 256];
     if path.len() >= 255 {
         return Err(Error::OutOfRange);
@@ -416,7 +428,26 @@ pub fn chmod(path: &str, perms: Permissions) -> Result<(), Error> {
     buf[path.len()] = 0;
     crate::syscall::call(
         SYS_ENTRY_UPDATE,
-        [buf.as_ptr() as u64, perms.to_bits() as u64, 0, crate::nr::ENTRY_UPDATE_CHMOD, 0, 0],
+        [buf.as_ptr() as u64, bits as u64, 0, crate::nr::ENTRY_UPDATE_CHMOD, 0, 0],
+    )
+    .map(|_| ())
+}
+
+/// 易主（SYS_ENTRY_UPDATE chown 动作，A1-7）：把节点属主设为 (uid, gid)。
+///
+/// 参数为定长寄存器值（非指针），无用户拷贝面。内核侧强制：属主或
+/// `CAP_OWNER` 可 chmod/chown 自己的节点；**易他主（目标属主 ≠ 调用者）**
+/// 需 `CAP_SYSTEM`（POSIX chown 限制面，ADR-040 §2.6 延伸）。
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), Error> {
+    let mut buf = [0u8; 256];
+    if path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    crate::syscall::call(
+        SYS_ENTRY_UPDATE,
+        [buf.as_ptr() as u64, uid as u64, gid as u64, crate::nr::ENTRY_UPDATE_CHOWN, 0, 0],
     )
     .map(|_| ())
 }

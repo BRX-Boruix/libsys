@@ -159,6 +159,10 @@ pub const ENTRY_READ_STAT: u64 = 1;
 pub const ENTRY_UPDATE_RENAME: u64 = 0;
 /// SYS_ENTRY_UPDATE 动作编码（a4 区分）：1 = chmod（设置权限）。
 pub const ENTRY_UPDATE_CHMOD: u64 = 1;
+/// SYS_ENTRY_UPDATE 动作编码（a4 区分）：2 = chown（易主，A1-7）。
+/// a1=path_ptr，a2=uid，a3=gid（ADR-014 §4.4「更新节点元数据」动词；
+/// 定长寄存器参数，无用户指针拷贝面）。
+pub const ENTRY_UPDATE_CHOWN: u64 = 2;
 
 // ---------- 5. DEVICE Domain (0x50, UIO Sandboxing) ----------
 /// `driver_register(name_ptr, len) -> uio_id`：注册用户态驱动。
