@@ -126,6 +126,21 @@ pub const SYS_TASK_GETPID: u32 = nr(domain::TASK, 0x09); // 0x39
 ///
 /// `flags`/`entry_rsp`/`entry_rip` 首期必须全为 [`DERIVE_FLAGS_NONE`]（=0，表示继承
 /// 父当前 RIP/RSP）；非 0 内核如实返回 `InvalidParam`，不静默忽略。
+/// `identity_query(out_ptr) -> 0`：把调用进程的**真实** uid/gid/caps 写入用户缓冲
+/// （`IdentityInfo`，12 字节）。A2-1 / ADR-040 §3.5 G1；TASK 域扩展动词 0x0B。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_IDENTITY_QUERY` 同值、注释互指。
+pub const SYS_TASK_IDENTITY_QUERY: u32 = nr(domain::TASK, 0x0B); // 0x3B
+/// `identity_set(uid, gid, _reserved, caps) -> 0`：变更调用进程组的身份。
+/// **路线 B 完整 setuid 语义**（项目所有者裁定）——无 `CAP_SYSTEM` 者只能降权或不变
+/// （否则 EACCES）；持 `CAP_SYSTEM` 者可设为任意 uid/gid（login 认证后降权至目标用户）。
+/// TASK 域扩展动词 0x0C。双侧镜像（S13）：与内核
+/// `kernel::syscall::SYS_TASK_IDENTITY_SET` 同值、注释互指。
+pub const SYS_TASK_IDENTITY_SET: u32 = nr(domain::TASK, 0x0C); // 0x3C
+
+/// `SYS_TASK_IDENTITY_SET` 的保留参数（`a3`）唯一合法取值。
+/// 用命名常量而非字面量 0，使「保留位」是一处成文语义而非魔法值（S13）。
+pub const IDENTITY_SET_RESERVED_NONE: u64 = 0;
+
 /// TASK 域扩展动词 0x0A。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_DERIVE`
 /// 同值、注释互指。
 pub const SYS_TASK_DERIVE: u32 = nr(domain::TASK, 0x0A); // 0x3A

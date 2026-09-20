@@ -207,6 +207,31 @@ const _: () = {
     assert!(core::mem::offset_of!(StatInfo, owner_gid) == 52);
 };
 
+/// 进程身份查询结果（A2-1 / ADR-040 §3.5 G1；与内核 `task::IdentityInfo` 同布局的镜像）。
+///
+/// `#[repr(C)]` 固定布局，跨边界真实数据合约，任一侧改字段必须同变更同步
+/// （PRE-12 纪律，同 `StatInfo`）。字段为**定长数字**（ADR-018 §三层校验 /
+/// ADR-040 §2.10：身份查询参数只用定长数字，不经用户态字符串）。
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IdentityInfo {
+    /// 真实 uid（**不得**伪造、不得兜底）。
+    pub uid: u32,
+    /// 真实 gid。
+    pub gid: u32,
+    /// 能力位（`Caps::bits()` 的 u8 值，零扩展；见内核 `task::Caps`）。
+    pub caps: u32,
+}
+
+/// A2-1：**两侧镜像一致性断言**（编译期钉死，同 `StatInfo` 纪律）。
+/// 布局：uid@0 gid@4 caps@8，sizeof=12。
+const _: () = {
+    assert!(core::mem::size_of::<IdentityInfo>() == 12, "IdentityInfo layout drifted: sync kernel mirror");
+    assert!(core::mem::offset_of!(IdentityInfo, uid) == 0);
+    assert!(core::mem::offset_of!(IdentityInfo, gid) == 4);
+    assert!(core::mem::offset_of!(IdentityInfo, caps) == 8);
+};
+
 impl StatInfo {
     /// 节点类型稳定数字标签（与内核 StatInfo::type_tag 一致）。
     pub fn type_tag(t: u32) -> u32 {

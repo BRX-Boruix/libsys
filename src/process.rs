@@ -2,8 +2,9 @@
 
 use crate::error::Error;
 use crate::nr::{
-    DERIVE_FLAGS_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID, SYS_TASK_SIGNAL,
-    SYS_TASK_SPAWN, SYS_TASK_WAIT,
+    DERIVE_FLAGS_NONE, IDENTITY_SET_RESERVED_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID,
+    SYS_TASK_GETTID, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET, SYS_TASK_SIGNAL, SYS_TASK_SPAWN,
+    SYS_TASK_WAIT,
 };
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
@@ -184,4 +185,49 @@ pub fn waitpid_any() -> Result<WaitResult, Error> {
         return Err(crate::error::Error::from_errno((ret as i64).wrapping_neg() as i32));
     }
     Ok(WaitResult { pid: r10, code: ret })
+}
+
+/// 进程身份查询结果（A2-1；与内核 `kernel::syscall::IdentityInfo` 同布局镜像）。
+///
+/// `#[repr(C)]` 固定布局，跨边界真实数据合约（PRE-12 纪律，同 `io::StatInfo`）；
+/// 字段全为定长数字（ADR-018/ADR-040 §2.10）。真正的定义在 `io` 模块，此处
+/// 重导出以免调用方跨模块找结构（S13 单点定义、单点引用）。
+pub use crate::io::IdentityInfo;
+
+/// `identity_query() -> IdentityInfo`：查询**本进程**的真实 uid/gid/caps（A2-1 /
+/// ADR-040 §3.5 G1）。
+///
+/// 只读、无门禁；不提供查询任意 pid 的形态。内核在无当前进程（内核/驱动
+/// 上下文）时如实 `PermissionDenied`——不会返回 0/0/0 的伪身份（S09）。
+pub fn identity_query() -> Result<IdentityInfo, Error> {
+    let mut info = IdentityInfo { uid: 0, gid: 0, caps: 0 };
+    crate::syscall::call(
+        SYS_TASK_IDENTITY_QUERY,
+        [&mut info as *mut IdentityInfo as u64, 0, 0, 0, 0, 0],
+    )?;
+    Ok(info)
+}
+
+/// `identity_set(uid, gid, caps) -> ()`：变更**本进程组**的身份（A2-1 / ADR-040
+/// §3.5 G1，路线 B 完整 setuid 语义）。
+///
+/// 授权按 `CAP_SYSTEM` 二分（内核单点判定，S13）：
+/// - 无 `CAP_SYSTEM`：只能降权或不变——uid 不得改变、caps 不得新增位，否则
+///   内核如实返回 `PermissionDenied`；
+/// - 持 `CAP_SYSTEM`：可设为任意 uid/gid（login 认证后据此降权至目标用户）。
+///
+/// 身份是**进程组级**的：本调用影响调用线程所在组的全部成员。
+pub fn identity_set(uid: u32, gid: u32, caps: u32) -> Result<(), Error> {
+    crate::syscall::call(
+        SYS_TASK_IDENTITY_SET,
+        [
+            uid as u64,
+            gid as u64,
+            IDENTITY_SET_RESERVED_NONE,
+            caps as u64,
+            0,
+            0,
+        ],
+    )?;
+    Ok(())
 }
