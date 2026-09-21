@@ -77,6 +77,11 @@ pub use process::{
 // （真实用户态 E2E `trave2e` 编译时暴露：`no identity_set in the root`）。此为可达性
 // 缺口，非新增功能；一并补齐 `IdentityInfo` 的根重导出。
 pub use process::{IdentityInfo, identity_query, identity_set};
+// A2-4 / ADR-040 §3.5 G1：补充组变更。与上面同一类**可达性缺口**——`groups_set`/
+// `groups_clear` 在 A2-4 已定义于 `process`（私有模块），但从未在 crate 根重导出，
+// 故用户程序实际无法调用。A2-7 的 `login` 需要"降权前先设组"，编译时暴露了该缺口。
+// 一并补齐 `GroupsInfo` 与两个子动作常量的根重导出（常量对调用方判断语义必需）。
+pub use process::{GroupsInfo, groups_clear, groups_set};
 pub use random::bytes as random_bytes;
 
 pub use system::info;
