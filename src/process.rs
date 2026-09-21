@@ -2,9 +2,10 @@
 
 use crate::error::Error;
 use crate::nr::{
-    DERIVE_FLAGS_NONE, IDENTITY_SET_RESERVED_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID,
-    SYS_TASK_GETTID, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET, SYS_TASK_SIGNAL, SYS_TASK_SPAWN,
-    SYS_TASK_WAIT,
+    DERIVE_FLAGS_NONE, GROUPS_SET_CLEAR, GROUPS_SET_REPLACE, GROUPS_SET_RESERVED_NONE,
+    IDENTITY_SET_RESERVED_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID,
+    SYS_TASK_GROUPS_SET, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET, SYS_TASK_SIGNAL,
+    SYS_TASK_SPAWN, SYS_TASK_WAIT,
 };
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
@@ -230,4 +231,51 @@ pub fn identity_set(uid: u32, gid: u32, caps: u32) -> Result<(), Error> {
         ],
     )?;
     Ok(())
+}
+
+/// 补充组设置结果（A2-4；与内核 `kernel::syscall::GroupsInfo` 同布局镜像）。
+///
+/// `#[repr(C)]` 固定布局，跨边界真实数据合约（PRE-12 纪律）；真正的定义在
+/// `io` 模块，此处重导出以免调用方跨模块找结构（S13 单点定义、单点引用）。
+pub use crate::io::GroupsInfo;
+
+/// `groups_set(gids) -> GroupsInfo`：**整体替换**本进程组的补充组集合（A2-4 /
+/// ADR-040 §2.1 `NamedGid`）。
+///
+/// 组表 `/config/groups.json` 由**用户态**解析后经本调用装入身份——内核不解析
+/// 组表（ADR-040 §2.9 分层原则；Q6 不变）。
+///
+/// 授权按 `CAP_SYSTEM` 二分（内核单点判定，S13）：
+/// - 无 `CAP_SYSTEM`：只能**收缩或不变**——集合必须是当前集合的子集，否则
+///   内核如实返回 `PermissionDenied`（新增自己不属于的组即组越权）；
+/// - 持 `CAP_SYSTEM`：可设为任意集合（login 按组表装配成员身份用，A2-7）。
+///
+/// **超限如实报错**：`gids.len() > GROUPS_MAX` 时内核返回 `OutOfRange`，绝不
+/// 静默截断——截断会让调用方以为自己加入了某个组而实际没有（能力谎言，S09）。
+/// 返回值为**实际生效**的集合，调用方无需再次查询即可确知结果。
+pub fn groups_set(gids: &[u32]) -> Result<GroupsInfo, Error> {
+    let mut info = GroupsInfo { count: 0, reserved: 0, gids: [0; crate::nr::GROUPS_MAX] };
+    crate::syscall::call(
+        SYS_TASK_GROUPS_SET,
+        [
+            gids.as_ptr() as u64,
+            gids.len() as u64,
+            GROUPS_SET_RESERVED_NONE,
+            GROUPS_SET_REPLACE,
+            &mut info as *mut GroupsInfo as u64,
+            0,
+        ],
+    )?;
+    Ok(info)
+}
+
+/// `groups_clear()`：清空本进程组的补充组集合（A2-4）。语义同 `groups_set(&[])`，
+/// 但经专用方向码走内核的 `GROUPS_SET_CLEAR` 分支（不必传空数组指针）。
+pub fn groups_clear() -> Result<GroupsInfo, Error> {
+    let mut info = GroupsInfo { count: 0, reserved: 0, gids: [0; crate::nr::GROUPS_MAX] };
+    crate::syscall::call(
+        SYS_TASK_GROUPS_SET,
+        [0, 0, GROUPS_SET_RESERVED_NONE, GROUPS_SET_CLEAR, &mut info as *mut GroupsInfo as u64, 0],
+    )?;
+    Ok(info)
 }

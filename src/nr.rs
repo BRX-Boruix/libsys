@@ -141,6 +141,28 @@ pub const SYS_TASK_IDENTITY_SET: u32 = nr(domain::TASK, 0x0C); // 0x3C
 /// 用命名常量而非字面量 0，使「保留位」是一处成文语义而非魔法值（S13）。
 pub const IDENTITY_SET_RESERVED_NONE: u64 = 0;
 
+/// `groups_set(ptr, count, _reserved, mode) -> 0`：设置调用进程组的**补充组集合**。
+/// 组表 `/config/groups.json` 由用户态解析后经本调用装入身份——内核不解析组表
+/// （ADR-040 §2.9 分层原则）。
+/// 授权：持 `CAP_SYSTEM` 可设为任意集合；无 `CAP_SYSTEM` 只能**收缩或不变**
+/// （新增自己不属于的组 → EACCES）。超限（> Groups::MAX）如实 EOVERFLOW，
+/// **绝不静默截断**（截断 = 能力谎言）。
+/// TASK 域扩展动词 0x0D。双侧镜像（S13）：与内核
+/// `kernel::syscall::SYS_TASK_GROUPS_SET` 同值、注释互指。
+pub const SYS_TASK_GROUPS_SET: u32 = nr(domain::TASK, 0x0D); // 0x3D
+
+/// `SYS_TASK_GROUPS_SET` 的保留参数（`a3`）唯一合法取值。
+pub const GROUPS_SET_RESERVED_NONE: u64 = 0;
+
+/// `SYS_TASK_GROUPS_SET` 的 `a4`：以给定集合**整体替换**当前补充组。
+pub const GROUPS_SET_REPLACE: u64 = 0;
+
+/// `SYS_TASK_GROUPS_SET` 的 `a4`：清空补充组（此时 `a1`/`a2` 必须为 0）。
+pub const GROUPS_SET_CLEAR: u64 = 1;
+
+/// 补充组集合上限（与内核 `task::Groups::MAX` 同值镜像，PRE-12 纪律）。
+pub const GROUPS_MAX: usize = 8;
+
 /// TASK 域扩展动词 0x0A。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_DERIVE`
 /// 同值、注释互指。
 pub const SYS_TASK_DERIVE: u32 = nr(domain::TASK, 0x0A); // 0x3A

@@ -232,6 +232,32 @@ const _: () = {
     assert!(core::mem::offset_of!(IdentityInfo, caps) == 8);
 };
 
+/// 补充组设置结果（A2-4 / ADR-040 §2.1 `NamedGid` / §3.5 G6 组账户；与内核
+/// `kernel::syscall::GroupsInfo` 同布局的镜像）。
+///
+/// `#[repr(C)]` 固定布局，跨边界真实数据合约，任一侧改字段必须同变更同步
+/// （PRE-12 纪律，同 `StatInfo`/`IdentityInfo`）。**不含变长数据**——`gids` 是定长
+/// 数组，满足 ADR-018/ADR-040 §2.10「参数只用定长数字」。
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GroupsInfo {
+    /// 实际生效的补充组个数（`0..=GROUPS_MAX`）。
+    pub count: u32,
+    /// 保留（须为 0；便于将来向尾部增长而不破 ABI）。
+    pub reserved: u32,
+    /// 组 id 数组（前 `count` 项有效）。
+    pub gids: [u32; crate::nr::GROUPS_MAX],
+}
+
+/// A2-4：**两侧镜像一致性断言**（编译期钉死，同 `StatInfo`/`IdentityInfo` 纪律）。
+/// 布局：count@0 reserved@4 gids@8（8×u32），sizeof=40。
+const _: () = {
+    assert!(core::mem::size_of::<GroupsInfo>() == 40, "GroupsInfo layout drifted: sync kernel mirror");
+    assert!(core::mem::offset_of!(GroupsInfo, count) == 0);
+    assert!(core::mem::offset_of!(GroupsInfo, reserved) == 4);
+    assert!(core::mem::offset_of!(GroupsInfo, gids) == 8);
+};
+
 /// 显式 ACE 的 wire 形态（A2-6 / ADR-040 §3.5.1 G4；与内核 `vfs::inode::AceWire`
 /// 同布局的镜像）。
 ///
