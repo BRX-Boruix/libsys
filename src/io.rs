@@ -754,6 +754,68 @@ pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
 }
 
 /// 高阶便捷函数：读取目录下的所有目录项（原生从 VFS JSON 解析）。
+/// 把 `read_dir` 拿到的文本解析成目录条目（§6.3 的修复点）。
+///
+/// **抽为纯函数的原因**：`read_dir` 依赖真实 VFS（只在 QEMU 内存在），解析缺陷若内联
+/// 其中就只能靠停机测试撞出来。抽出后可在宿主上对畸形输入逐条锁定（S23/S31）。
+/// 与 `parse_proc_list`（J-TREE-a）同一手法。
+/// 把 `read_dir` 拿到的文本解析成目录条目（§6.3 的修复点）。
+///
+/// **抽为纯函数的原因**：`read_dir` 依赖真实 VFS（只在 QEMU 内存在），解析缺陷若内联
+/// 其中就只能靠停机测试撞出来。抽出后可在宿主上对畸形输入逐条锁定（S23/S31）。
+/// 与 `parse_proc_list`（J-TREE-a）同一手法。
+///
+/// **为何改用 `JsonParser` 而非字符串切分**：旧实现按闭合花括号加逗号切分、再按逗号
+/// 切字段，一旦某个字符串字段的真实内容里出现这两个序列（如文件名含逗号），切分点即
+/// 错位，结果是**静默产出错值**——比报错更糟（S09 宁可报错，绝不返回伪数据）。
+/// 对抗测试 `parse_dir_entries_name_with_json_struct_chars` 已锁定（红灯转绿的证据
+/// 见该测试：旧实现把 `we'ir,d}.txt` 切成 `we'ir`）。
+///
+/// **错误策略**（与 `parse_proc_list` 一致）：语法根本不是 JSON 数组 →
+/// `Err(InvalidParam)`（上抛，不假装成功）；单条记录内部字段缺失/非法 →
+/// 该字段如实取安全值（`size` 为 0），条目本身仍保留（文件确实存在，只是元数据不全）。
+pub fn parse_dir_entries(text: &str) -> Result<Vec<DirEntry>, Error> {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('[') {
+        return Err(Error::InvalidParam);
+    }
+    let value = crate::json::JsonParser::new(trimmed)
+        .parse()
+        .map_err(|_| Error::InvalidParam)?;
+    let items = match value {
+        crate::json::JsonValue::Array(items) => items,
+        _ => return Err(Error::InvalidParam),
+    };
+
+    let mut entries = Vec::new();
+    for item in items {
+        let fields = match item {
+            crate::json::JsonValue::Object(fields) => fields,
+            _ => continue,
+        };
+
+        let mut name = String::new();
+        let mut node_type = String::new();
+        let mut size = 0u64;
+        for (key, val) in &fields {
+            match (key.as_str(), val) {
+                ("name", crate::json::JsonValue::String(s)) => name = s.clone(),
+                ("type", crate::json::JsonValue::String(s)) => node_type = s.clone(),
+                ("size", crate::json::JsonValue::Number(n)) => size = n.parse::<u64>().unwrap_or(0),
+                _ => {}
+            }
+        }
+        if !name.is_empty() {
+            entries.push(DirEntry {
+                name,
+                node_type,
+                size,
+            });
+        }
+    }
+    Ok(entries)
+}
+
 pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     let mut null_terminated = [0u8; 256];
     if path.len() >= 255 {
@@ -776,58 +838,7 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     )? as usize;
 
     let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
-    let mut entries = Vec::new();
-
-    // 如果是 JSON 数组 [{"name":"...","type":"...","size":...}]
-    let trimmed = text.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        let content = &trimmed[1..trimmed.len() - 1];
-        for obj_str in content.split("},") {
-            let s = obj_str.trim().trim_start_matches('{').trim_end_matches('}');
-            let mut name = String::new();
-            let mut node_type = String::new();
-            let mut size = 0u64;
-
-            for field in s.split(',') {
-                let mut kv = field.split(':');
-                if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
-                    let k = k.trim().trim_matches('"');
-                    let v = v.trim().trim_matches('"');
-                    match k {
-                        "name" => name = String::from(v),
-                        "type" => node_type = String::from(v),
-                        "size" => size = v.parse::<u64>().unwrap_or(0),
-                        _ => {}
-                    }
-                }
-            }
-            if !name.is_empty() {
-                entries.push(DirEntry {
-                    name,
-                    node_type,
-                    size,
-                });
-            }
-        }
-        return Ok(entries);
-    }
-
-    // 纯文本兼容
-    for line in text.lines() {
-        if line.is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() >= 3 {
-            let size = parts[2].parse::<u64>().unwrap_or(0);
-            entries.push(DirEntry {
-                name: String::from(parts[0]),
-                node_type: String::from(parts[1]),
-                size,
-            });
-        }
-    }
-    Ok(entries)
+    parse_dir_entries(text)
 }
 
 /// 把 `read` 返回的字节数钳到缓冲区长度内（§6.5 的修复点）。
@@ -853,6 +864,61 @@ pub(crate) fn clamp_read_n(n: usize, buf_len: usize) -> usize {
 
 #[cfg(test)]
 mod io_tests {
+    /// §6.3 对抗测试：名字字段含 JSON 结构字符时不得切错。
+    ///
+    /// 旧实现按闭合花括号加逗号切分、再按逗号切字段，一旦名字里含 `},{`、`,`、`"`，
+    /// 切分点即错位——静默产出错值（比报错更糟，S09）。
+    /// 名字来自真实文件名，该输入可达（例如 `we'ir,d}.txt`）。
+    #[test]
+    fn parse_dir_entries_name_with_json_struct_chars() {
+
+        // 
+        // 用 JsonWriter 造输入：手拼转义容易写错。
+        let mut w = crate::json::JsonWriter::new(crate::json::VecTarget::new());
+        let mut arr = w.start_array().unwrap();
+        arr.push_object(|o| {
+            o.field_str("name", "we'ir,d}.txt").unwrap();
+            o.field_str("type", "RegularFile").unwrap();
+            o.field_u64("size", 12).unwrap();
+            Ok(())
+        }).unwrap();
+        arr.push_object(|o| {
+            o.field_str("name", "plain.txt").unwrap();
+            o.field_str("type", "RegularFile").unwrap();
+            o.field_u64("size", 1).unwrap();
+            Ok(())
+        }).unwrap();
+        arr.end().unwrap();
+        let text = w.into_target().into_string().unwrap();
+        let entries = parse_dir_entries(&text).expect("must parse");
+        assert_eq!(entries.len(), 2, "both entries must survive: {:?}", entries);
+        assert_eq!(entries[0].name, "we'ir,d}.txt");
+        assert_eq!(entries[0].size, 12);
+        assert_eq!(entries[1].name, "plain.txt");
+        assert_eq!(entries[1].size, 1);
+    }
+
+    /// 非 JSON 输入如实报错（不假装成功，S09）。
+    #[test]
+    fn parse_dir_entries_rejects_non_json() {
+        assert!(parse_dir_entries("name:type:12").is_err());
+        assert!(parse_dir_entries("").is_err());
+    }
+
+    /// 字段缺失的条目仍保留（与 parse_proc_list 的错误策略一致）。
+    #[test]
+    fn parse_dir_entries_keeps_entry_with_missing_fields() {
+        let mut w = crate::json::JsonWriter::new(crate::json::VecTarget::new());
+
+        let mut arr = w.start_array().unwrap();
+        arr.push_object(|o| { o.field_str("name", "partial.txt").unwrap(); Ok(()) }).unwrap();
+        arr.end().unwrap();
+        let text = w.into_target().into_string().unwrap();
+        let entries = parse_dir_entries(&text).expect("must parse");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "partial.txt");
+        assert_eq!(entries[0].size, 0, "missing size = safe default 0");
+    }
     use super::*;
 
     /// 正常路径：n 在范围内时原样通过（钳制不得改变合法值）。
