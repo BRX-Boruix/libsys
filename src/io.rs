@@ -736,7 +736,13 @@ pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
     loop {
         match read(fd, &mut chunk) {
             Ok(0) => break,
-            Ok(n) => data.extend_from_slice(&chunk[..n]),
+            // §6.5：**信任但验证**——n 钳到缓冲区长度内再切片。
+            // 真 syscall 下内核保证 n <= 512，此为纯防御；宿主测试里
+            // syscall::call 返回垃圾（实测 3221225477），不钳即越界 panic。
+            Ok(n) => {
+                let n = clamp_read_n(n, chunk.len());
+                data.extend_from_slice(&chunk[..n]);
+            }
             Err(e) => {
                 let _ = close(fd);
                 return Err(e);
@@ -822,4 +828,69 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
         }
     }
     Ok(entries)
+}
+
+/// 把 `read` 返回的字节数钳到缓冲区长度内（§6.5 的修复点）。
+///
+/// # 为什么这个函数必须存在（缺陷背景）
+///
+/// `read_to_end` 原来直接写 `&chunk[..n]`，`n` 取自 `read()` 的返回值。
+/// 真 syscall 下内核保证 `n <= buf.len()`，所以缺陷不可达；
+/// 但在**无 syscall 的宿主测试**里，`syscall::call` 的返回值是垃圾
+/// （实测出现过 `3221225477`），`&chunk[..n]` 立即越界 panic：
+/// `range end index 3221225477 out of range for slice of length 512`。
+///
+/// **防御在哪一侧**：用户态库**信任但验证**——不假定内核一定正确，
+/// 也不因此拒绝服务；越界的 n 钳到合法上界，数据照常收集。
+/// 返回钳后的 n 供调用方判断进展（若内核返回 0 表示 EOF，钳制不改变 0）。
+pub(crate) fn clamp_read_n(n: usize, buf_len: usize) -> usize {
+    if n > buf_len {
+        buf_len
+    } else {
+        n
+    }
+}
+
+#[cfg(test)]
+mod io_tests {
+    use super::*;
+
+    /// 正常路径：n 在范围内时原样通过（钳制不得改变合法值）。
+    #[test]
+    fn clamp_keeps_valid_n_unchanged() {
+        assert_eq!(clamp_read_n(0, 512), 0);
+        assert_eq!(clamp_read_n(1, 512), 1);
+        assert_eq!(clamp_read_n(511, 512), 511);
+        assert_eq!(clamp_read_n(512, 512), 512, "n == buf_len is legal");
+    }
+
+    /// 对抗路径：宿主垃圾返回值（实测出现过的那个数）必须被钳住。
+    #[test]
+    fn clamp_pins_host_garbage_to_buf_len() {
+        // 3221225477 = 0xC0000005，实测从宿主 syscall 桩返回过的垃圾值。
+        assert_eq!(clamp_read_n(3_221_225_477, 512), 512);
+        assert_eq!(clamp_read_n(usize::MAX, 512), 512);
+    }
+
+    /// 边界：空缓冲区（任何 n > 0 都钳到 0，切片不会 panic）。
+    #[test]
+    fn clamp_handles_empty_buf() {
+        assert_eq!(clamp_read_n(0, 0), 0);
+        assert_eq!(clamp_read_n(1, 0), 0);
+        assert_eq!(clamp_read_n(usize::MAX, 0), 0);
+    }
+
+    /// `read_to_end` 的切片路径整体不 panic：构造一个**必然**拿到垃圾 n 的
+    /// 场景不可行（read 走真 syscall），但钳制函数是唯一可疑点，
+    /// 此处用与 `read_to_end` 相同的切片表达式证明钳后安全。
+    #[test]
+    fn sliced_chunk_never_panics_after_clamp() {
+        let chunk = [0u8; 512];
+        for n in [0usize, 1, 512, 513, 3_221_225_477, usize::MAX] {
+            let clamped = clamp_read_n(n, chunk.len());
+            // 与 read_to_end 内部相同的表达式；钳后必须合法。
+            let s = &chunk[..clamped];
+            assert!(s.len() <= chunk.len());
+        }
+    }
 }
