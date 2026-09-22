@@ -39,68 +39,129 @@ pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
 }
 
 /// 进程快照条目。
+///
+/// **ABI 注意**：`#[repr(C, align(8))]` 是对外布局契约——字段顺序与填充已由
+/// 既有调用方（`shell` / `ps`）依赖，**新增字段只能追加在末尾**，不得插队。
 #[repr(C, align(8))]
 #[derive(Clone, Copy)]
 pub struct PsEntry {
     /// 进程 id。
     pub pid: u32,
-    /// 状态：1=Ready 2=Running 3=Blocked。
+    /// 状态：0=未知 1=Ready 2=Running 3=Blocked。
+    ///
+    /// **0 是未知而非 Ready**：`/processes/list` 未来若出现未登记的状态名，
+    /// 默认成 Ready 就是伪数据（S09），故显式保留 0 表示内核报了看不懂的状态。
     pub state: u8,
     /// 填充（保留）。
     pub _pad: [u8; 3],
+    /// 父进程 id（0 = 无父进程，如 `init`）。
+    ///
+    /// 真值来源：`vfs/src/procfs.rs` 的 `ppid` 字段（内核 `Process::ppid`）。
+    /// **作业树（ADR-043 支柱 1）据此在用户态构造父子关系**——内核零改动。
+    pub ppid: u32,
+}
+
+impl PsEntry {
+    /// 空条目（缓冲初始化用）。字段全 0 即无此进程——`pid == 0` 是非法进程号，
+    /// 解析时被显式丢弃，故 0 不会被误当成真实进程。
+    pub const EMPTY: PsEntry = PsEntry {
+        pid: 0,
+        state: 0,
+        _pad: [0; 3],
+        ppid: 0,
+    };
+}
+
+/// 把 `/processes/list` 的 JSON 文本解析进 `buf`，返回写入条目数。
+///
+/// **抽为纯函数的原因**：`ps()` 依赖真实 VFS（只在 QEMU 内存在），解析缺陷若内联
+/// 其中就只能靠停机测试撞出来。抽出后可在宿主上对畸形输入逐条锁定（S23/S31）。
+///
+/// **为何改用 `JsonParser` 而非字符串切分**：旧实现按闭合花括号加逗号切分、再按逗号
+/// 切字段，一旦某个字符串字段的真实内容里出现这两个序列（如进程名含逗号），切分点即
+/// 错位，结果是**静默产出错值**——比报错更糟（S09 宁可报错，绝不返回伪数据）。
+///
+/// **错误策略**：语法根本不是 JSON 数组 → `Err(InvalidParam)`（上抛，不假装成功）；
+/// 单条记录内部字段缺失/非法 → 该字段如实取安全值（`ppid`/`state` 为 0），
+/// 条目本身仍保留（进程确实存在，只是元数据不全）。
+pub fn parse_proc_list(text: &str, buf: &mut [PsEntry]) -> Result<usize, Error> {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('[') {
+        return Err(Error::InvalidParam);
+    }
+    let value = crate::json::JsonParser::new(trimmed)
+        .parse()
+        .map_err(|_| Error::InvalidParam)?;
+    let items = match value {
+        crate::json::JsonValue::Array(items) => items,
+        _ => return Err(Error::InvalidParam),
+    };
+
+    let mut count = 0;
+    for item in items {
+        if count >= buf.len() {
+            break;
+        }
+        let fields = match item {
+            crate::json::JsonValue::Object(fields) => fields,
+            _ => continue,
+        };
+
+        let mut pid = 0u32;
+        let mut ppid = 0u32;
+        let mut state = 0u8;
+        for (key, val) in &fields {
+            match key.as_str() {
+                "pid" => pid = json_u32(val).unwrap_or(0),
+                "ppid" => ppid = json_u32(val).unwrap_or(0),
+                "state" => {
+                    state = match val {
+                        crate::json::JsonValue::String(s) => match s.as_str() {
+                            "Ready" => 1,
+                            "Running" => 2,
+                            "Blocked" => 3,
+                            _ => 0,
+                        },
+                        _ => 0,
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if pid == 0 {
+            continue;
+        }
+
+        buf[count] = PsEntry {
+            pid,
+            state,
+            _pad: [0; 3],
+            ppid,
+        };
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// 从 JSON 值取 `u32`；数值以字符串词法保存（ADR-013），故走字符串解析。
+fn json_u32(v: &crate::json::JsonValue) -> Option<u32> {
+    match v {
+        crate::json::JsonValue::Number(s) => s.parse::<u32>().ok(),
+        _ => None,
+    }
 }
 
 /// `ps(buf) -> count`：从 `/processes/list` VFS 虚拟文件读取并解析存活进程快照。
 pub fn ps(buf: &mut [PsEntry]) -> Result<usize, Error> {
     let data = crate::io::read_to_end("/processes/list")?;
     let text = core::str::from_utf8(&data).map_err(|_| Error::InvalidParam)?;
-    let mut count = 0;
-
-    // 解析 JSON 列表 [{"pid":1,"state":"Running",...}]
-    let trimmed = text.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        let content = &trimmed[1..trimmed.len() - 1];
-        for obj_str in content.split("},") {
-            if count >= buf.len() {
-                break;
-            }
-            let s = obj_str.trim().trim_start_matches('{').trim_end_matches('}');
-            let mut pid = 0u32;
-            let mut state = 1u8; // Ready
-
-            for field in s.split(',') {
-                let mut kv = field.split(':');
-                if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
-                    let k = k.trim().trim_matches('"');
-                    let v = v.trim().trim_matches('"');
-                    match k {
-                        "pid" => pid = v.parse::<u32>().unwrap_or(0),
-                        "state" => match v {
-                            "Ready" => state = 1,
-                            "Running" => state = 2,
-                            "Blocked" => state = 3,
-                            _ => state = 0,
-                        },
-                        _ => {}
-                    }
-                }
-            }
-            if pid > 0 {
-                buf[count] = PsEntry {
-                    pid,
-                    state,
-                    _pad: [0; 3],
-                };
-                count += 1;
-            }
-        }
-    }
-    Ok(count)
+    parse_proc_list(text, buf)
 }
 
 /// 动态获取当前所有存活进程的快照列表（自动扩容）。
 pub fn ps_list() -> Result<alloc::vec::Vec<PsEntry>, Error> {
-    let mut entries = alloc::vec![PsEntry { pid: 0, state: 0, _pad: [0; 3] }; 32];
+    let mut entries = alloc::vec![PsEntry::EMPTY; 32];
     let count = ps(&mut entries)?;
     entries.truncate(count);
     Ok(entries)
@@ -278,4 +339,160 @@ pub fn groups_clear() -> Result<GroupsInfo, Error> {
         [0, 0, GROUPS_SET_RESERVED_NONE, GROUPS_SET_CLEAR, &mut info as *mut GroupsInfo as u64, 0],
     )?;
     Ok(info)
+}
+
+// ===========================================================================
+// 宿主单测（`cargo test -p libsys`）：覆盖 `/processes/list` 的 JSON 解析。
+//
+// **为何把解析抽成纯函数**：`ps()` 依赖真实 VFS 读（只在 QEMU 里存在），若解析
+// 逻辑内联其中，任何解析缺陷都只能靠内核停机测试或人工交互撞出来——那是温室
+// 测试（S29/S30）。抽成 `parse_proc_list` 后，畸形 JSON、缺字段、非法数值等
+// 对抗输入可在宿主上逐条锁定（S31）。
+// ===========================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 造一条与 `vfs/src/procfs.rs` 真实输出**同形**的 JSON 记录。
+    fn entry(pid: u32, name: &str, state: &str, ppid: u32) -> alloc::string::String {
+        alloc::format!(
+            "{{\"pid\":{pid},\"name\":\"{name}\",\"state\":\"{state}\",\"ppid\":{ppid},\"memory_bytes\":4096,\"uri\":\"/processes/{pid}/status\"}}"
+        )
+    }
+
+    fn wrap(entries: &[alloc::string::String]) -> alloc::string::String {
+        let mut s = alloc::string::String::from("[");
+        for (i, e) in entries.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            s.push_str(e);
+        }
+        s.push(']');
+        s.push('\n');
+        s
+    }
+
+    #[test]
+    fn test_parse_proc_list_reads_ppid() {
+        let text = wrap(&[
+            entry(1, "init", "Ready", 0),
+            entry(2, "shell", "Running", 1),
+            entry(7, "selftest", "Blocked", 2),
+        ]);
+        let mut buf = [PsEntry::EMPTY; 8];
+        let n = parse_proc_list(&text, &mut buf).unwrap();
+        assert_eq!(n, 3);
+        assert_eq!(buf[0].pid, 1);
+        assert_eq!(buf[0].ppid, 0, "init 无父进程，ppid 必须为 0");
+        assert_eq!(buf[1].pid, 2);
+        assert_eq!(buf[1].ppid, 1, "shell 的父亲是 init");
+        assert_eq!(buf[2].pid, 7);
+        assert_eq!(buf[2].ppid, 2, "selftest 的父亲是 shell");
+        assert_eq!(buf[2].state, 3, "Blocked");
+    }
+
+    #[test]
+    fn test_parse_proc_list_missing_ppid_is_zero() {
+        // 缺 ppid 字段：如实置 0（"无父进程"），绝不用 pid 或其它值顶替（S09）。
+        let text = r#"[{"pid":5,"name":"x","state":"Ready"}]"#;
+        let mut buf = [PsEntry::EMPTY; 4];
+        let n = parse_proc_list(text, &mut buf).unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(buf[0].ppid, 0);
+    }
+
+    #[test]
+    fn test_parse_proc_list_non_numeric_ppid_is_zero() {
+        // 非法数值：置 0，绝不 panic、绝不部分解析出脏值。
+        let text = r#"[{"pid":5,"state":"Ready","ppid":"abc"}]"#;
+        let mut buf = [PsEntry::EMPTY; 4];
+        let n = parse_proc_list(text, &mut buf).unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(buf[0].ppid, 0);
+    }
+
+    #[test]
+    fn test_parse_proc_list_stops_at_buffer_capacity() {
+        // 资源耗尽：条目数超过缓冲容量时必须**截断而非越界写**（S18/S31）。
+        let entries: alloc::vec::Vec<_> = (1..=10).map(|i| entry(i, "p", "Ready", i - 1)).collect();
+        let text = wrap(&entries);
+        let mut buf = [PsEntry::EMPTY; 3];
+        let n = parse_proc_list(&text, &mut buf).unwrap();
+        assert_eq!(n, 3, "容量 3 只能返回 3 条，不得越界");
+        assert_eq!(buf[0].pid, 1);
+        assert_eq!(buf[2].pid, 3);
+    }
+
+    #[test]
+    fn test_parse_proc_list_adversarial() {
+        // 对抗输入（S31），分两类：**格式非法**必须报错（绝不假装成功），
+        // **格式合法但内容异常**必须给出安全值（绝不产出伪数据）。
+
+        // ---- 类一：格式非法 → 必须 Err，绝不返回伪造的"0 条" ----
+        let malformed: &[&str] = &[
+            "",                                 // 空输入
+            "{}",                               // 非数组（对象）
+            "boom",                             // 纯垃圾
+            r#"[{"pid":1,"state":"Ready"}"#,  // 未闭合数组
+            "[{",                               // 截断对象
+            "[1,2",                             // 截断数字
+        ];
+        for input in malformed {
+            let mut buf = [PsEntry::EMPTY; 4];
+            let r = parse_proc_list(input, &mut buf);
+            assert!(r.is_err(), "畸形输入 {input:?} 必须报错，实得 {r:?}");
+        }
+
+        // ---- 类二：格式合法但内容异常 → 安全值，不得 panic ----
+        // 空数组：合法，0 条。
+        assert_eq!(parse_proc_list("[]", &mut [PsEntry::EMPTY; 4]).unwrap(), 0);
+        // 尾随字节（procfs 会追加 '\n'）：值本身合法 → 正常解析，不报错。
+        assert_eq!(
+            parse_proc_list("[1,2,3]\n", &mut [PsEntry::EMPTY; 4]).unwrap(),
+            0
+        );
+        // pid=0 是非法进程号（同时是空槽标记），必须被丢弃。
+        assert_eq!(
+            parse_proc_list(r#"[{"pid":0,"state":"Ready","ppid":0}]"#, &mut [PsEntry::EMPTY; 4])
+                .unwrap(),
+            0
+        );
+        // 元素是字符串而非对象：跳过该条，不 panic、不计入。
+        assert_eq!(
+            parse_proc_list(r#"[{"pid":1,"ppid":0,"state":"Ready"},"junk"]"#, &mut [PsEntry::EMPTY; 4])
+                .unwrap(),
+            1
+        );
+        // 超大 pid（超出 u32）：安全值 0 → 该条被丢弃，绝不截断成别的进程号。
+        assert_eq!(
+            parse_proc_list(r#"[{"pid":4294967296,"state":"Ready","ppid":0}]"#, &mut [PsEntry::EMPTY; 4])
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_parse_proc_list_name_containing_separators() {
+        // 回归锁定：进程名里含 "," 与 "}," 时，旧的手工切分实现会错位产出脏值。
+        // 这是"静默出错值"的典型场景（S09），必须由 JSON 解析器正确读出。
+        let text = r#"[{"pid":3,"name":"a,b} c","state":"Running","ppid":2}]"#;
+        let mut buf = [PsEntry::EMPTY; 4];
+        let n = parse_proc_list(text, &mut buf).unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(buf[0].pid, 3);
+        assert_eq!(buf[0].ppid, 2);
+        assert_eq!(buf[0].state, 2);
+    }
+
+    #[test]
+    fn test_parse_proc_list_unknown_state_is_zero() {
+        // 未知状态：置 0（未知），绝不错认成 Ready（若默认 1 即为伪数据）。
+        let text = r#"[{"pid":9,"state":"Zombie","ppid":1}]"#;
+        let mut buf = [PsEntry::EMPTY; 4];
+        let n = parse_proc_list(text, &mut buf).unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(buf[0].state, 0, "未知状态必须置 0，不得默认 Ready");
+        assert_eq!(buf[0].ppid, 1);
+    }
 }
