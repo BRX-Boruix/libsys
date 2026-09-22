@@ -144,6 +144,125 @@ pub fn parse_proc_list(text: &str, buf: &mut [PsEntry]) -> Result<usize, Error> 
     Ok(count)
 }
 
+
+// ===========================================================================
+// J-TREE-b（ADR-043 支柱 1）：作业树构造（纯逻辑）
+// ===========================================================================
+
+/// 求全部**根**进程（无父，或父已不在表中），按 pid 升序。
+///
+/// **关键语义（S09）**：父已退出的**孤儿不得凭空消失**。若只认 `ppid == 0`,
+/// 则父退出后其子进程会从作业树上静默掉落——用户看到的是「进程没了」，
+/// 而它其实还活着。故父 pid 不在表中时，该进程按根呈现。
+///
+/// 纯逻辑：不读 VFS、不分配堆（除返回的 `Vec`），可在宿主上逐条锁定边界（S23/S31）。
+pub fn job_roots(procs: &[PsEntry]) -> alloc::vec::Vec<u32> {
+    fn present(procs: &[PsEntry], pid: u32) -> bool {
+        procs.iter().any(|p| p.pid == pid)
+    }
+    let mut roots: alloc::vec::Vec<u32> = alloc::vec::Vec::new();
+    for p in procs {
+        // 无父，或父不存在（已退出）→ 根。自环（ppid == pid）也是根，
+        // 否则它会既不是根、又永远挂在自己下面。
+        let is_root = p.ppid == 0 || p.ppid == p.pid || !present(procs, p.ppid);
+        if is_root {
+            roots.push(p.pid);
+        }
+    }
+    roots.sort_unstable();
+    roots
+}
+
+/// 求以 `root` 为根的**作业子树** = 该进程及其全部后代，按 pid 升序。
+///
+/// ADR-043 决策 1：「作业 = 某个直接子进程及其全部后代」（进程树的子树）。
+/// 这就是作业级操作（对整个作业发信号）的数据源。
+///
+/// **必须终止**：表可能被对手损坏成环路（A→B→A）。用「已访问集合」保证
+/// 每个 pid 最多进入结果一次，故环路不会导致无界展开或死循环。
+pub fn job_subtree(procs: &[PsEntry], root: u32) -> alloc::vec::Vec<u32> {
+    let mut out: alloc::vec::Vec<u32> = alloc::vec::Vec::new();
+    if !procs.iter().any(|p| p.pid == root) {
+        return out;
+    }
+    out.push(root);
+    // 广度优先逐层吸收直接子进程；`out` 兼作已访问集合。
+    let mut i = 0;
+    while i < out.len() {
+        let parent = out[i];
+        i += 1;
+        for p in procs {
+            if p.ppid == parent && !out.contains(&p.pid) {
+                out.push(p.pid);
+            }
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+
+/// 求进程 `pid` 在进程树中的**深度**（根为 0）。
+///
+/// `ps` 用它在人类可读输出里缩进呈现父子归属。
+///
+/// **必须有界**：表可能被对手损坏成环（A→B→A）或自环（ppid == pid）。
+/// 沿链回溯最多走 `procs.len() + 1` 步，超限即停——绝不无限循环、绝不 panic。
+/// 父不存在（已退出）或 `ppid == 0` → 深度 0（当作根）。
+pub fn job_depth(procs: &[PsEntry], pid: u32) -> u32 {
+    let start = match procs.iter().find(|p| p.pid == pid) {
+        Some(p) => p,
+        None => return 0,
+    };
+    let mut ppid = start.ppid;
+    let mut depth = 0u32;
+    let limit = procs.len() as u32 + 1;
+    while ppid != 0 && depth < limit {
+        match procs.iter().find(|p| p.pid == ppid) {
+            Some(parent) => {
+                if parent.ppid == parent.pid {
+                    break; // 自环
+                }
+                ppid = parent.ppid;
+                depth += 1;
+            }
+            None => break, // 父已退出 → 当作根
+        }
+    }
+    depth
+}
+
+
+/// 作业树的一行（供 `jobs` 渲染，也供宿主测试断言）。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct JobLine {
+    /// 作业号（1 基）。0 = 该行是作业成员的续行，不占作业号。
+    pub job: usize,
+    /// 该行对应的 pid。
+    pub pid: u32,
+    /// 是否为作业根（false = 该作业的子进程）。
+    pub is_root: bool,
+}
+
+/// 把一个作业（根 pid + 全部后代）展平成**渲染行序列**。
+///
+/// ADR-043 决策 1：作业 = 某直接子进程及其全部后代。`jobs` 的展示口径是
+/// 「根一行，其余后代各一行且缩进」，本函数即该口径的**单点定义**——
+/// 渲染与断言共用它，避免「测试测的和实际打印的是两套逻辑」（S06）。
+///
+/// 根不在 `alive` 中（已退出）时仍返回根一行（诚实呈现「Done」），
+/// 后代则按真实表列出（可能为空）。
+pub fn job_lines(alive: &[PsEntry], root: u32, job_no: usize) -> alloc::vec::Vec<JobLine> {
+    let mut out: alloc::vec::Vec<JobLine> = alloc::vec::Vec::new();
+    out.push(JobLine { job: job_no, pid: root, is_root: true });
+    for pid in job_subtree(alive, root) {
+        if pid != root {
+            out.push(JobLine { job: 0, pid, is_root: false });
+        }
+    }
+    out
+}
+
 /// 从 JSON 值取 `u32`；数值以字符串词法保存（ADR-013），故走字符串解析。
 fn json_u32(v: &crate::json::JsonValue) -> Option<u32> {
     match v {
@@ -494,5 +613,166 @@ mod tests {
         assert_eq!(n, 1);
         assert_eq!(buf[0].state, 0, "未知状态必须置 0，不得默认 Ready");
         assert_eq!(buf[0].ppid, 1);
+    }
+}
+
+// ===========================================================================
+// J-TREE-b（ADR-043 支柱 1）：作业树构造
+//
+// 契约先行（S23）：先写断言，再看实现是否满足。树形构造是纯逻辑——输入
+// `PsEntry` 切片，输出父子关系。抽为纯函数使其可在宿主上对边界逐条锁定，
+// 而不是只能靠在 QEMU 里肉眼看 `jobs` 输出。
+// ===========================================================================
+#[cfg(test)]
+mod tree_tests {
+    use super::*;
+
+    fn e(pid: u32, ppid: u32) -> PsEntry {
+        PsEntry { pid, state: 1, _pad: [0; 3], ppid }
+    }
+
+    /// 单进程无父：自身即根。
+    #[test]
+    fn test_tree_single_root() {
+        let procs = [e(1, 0)];
+        let roots = job_roots(&procs);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0], 1);
+    }
+
+    /// 真实父子链：`init(1) -> shell(2) -> child(3)`，只有 1 是根。
+    #[test]
+    fn test_tree_chain_has_one_root() {
+        let procs = [e(1, 0), e(2, 1), e(3, 2)];
+        let roots = job_roots(&procs);
+        assert_eq!(roots, alloc::vec![1], "only init is a root");
+    }
+
+    /// 多个根（多个内核直创进程）按 pid 升序，顺序稳定可复现。
+    #[test]
+    fn test_tree_multiple_roots_sorted() {
+        let procs = [e(7, 0), e(3, 0), e(5, 3)];
+        let roots = job_roots(&procs);
+        assert_eq!(roots, alloc::vec![3, 7]);
+    }
+
+    /// **关键边界：孤儿**。父已退出（ppid 指向不存在的 pid）时，
+    /// 该进程**不能凭空消失**——否则 `jobs`/作业树会静默漏进程（S09）。
+    /// 它在用户态被当作根呈现。
+    #[test]
+    fn test_tree_orphan_becomes_root() {
+        let procs = [e(1, 0), e(9, 42)];
+        let roots = job_roots(&procs);
+        assert_eq!(roots, alloc::vec![1, 9], "orphan must not vanish");
+    }
+
+    /// 取某进程的全部后代（作业 = 子树），含自身。
+    #[test]
+    fn test_subtree_of_job_root() {
+        // 1 -> 2 -> {3, 4}, 4 -> 5; 另有无关的 8 -> 9
+        let procs = [e(1, 0), e(2, 1), e(3, 2), e(4, 2), e(5, 4), e(8, 0), e(9, 8)];
+        let sub = job_subtree(&procs, 2);
+        assert_eq!(sub, alloc::vec![2, 3, 4, 5], "job = root + all descendants");
+    }
+
+    /// 子树不越界到别人的分支。
+    #[test]
+    fn test_subtree_excludes_other_branch() {
+        let procs = [e(1, 0), e(2, 1), e(3, 2), e(8, 0), e(9, 8)];
+        let sub = job_subtree(&procs, 2);
+        assert_eq!(sub, alloc::vec![2, 3], "must not include 8/9");
+    }
+
+    /// 环路必须终止（对手：损坏/伪造的表）。绝不死循环。
+    #[test]
+    fn test_cycle_terminates() {
+        let procs = [e(1, 2), e(2, 1)];
+        let roots = job_roots(&procs);
+        assert!(roots.is_empty(), "a pure cycle has no root, but must not hang");
+        let sub = job_subtree(&procs, 1);
+        assert!(sub.contains(&1) && sub.contains(&2), "cycle members reachable once");
+        assert_eq!(sub.len(), 2, "each pid appears exactly once");
+    }
+
+    /// 自环（ppid == pid）不得把自己当自己的后代反复展开。
+    #[test]
+    fn test_self_loop() {
+        let procs = [e(5, 5)];
+        let sub = job_subtree(&procs, 5);
+        assert_eq!(sub, alloc::vec![5]);
+    }
+
+    /// 空表：没有任何根，也不 panic。
+    #[test]
+    fn test_empty_table() {
+        let procs: [PsEntry; 0] = [];
+        assert!(job_roots(&procs).is_empty());
+        assert!(job_subtree(&procs, 1).is_empty());
+    }
+    /// `job_depth`：父不存在 → 0（当作根）。
+    #[test]
+    fn test_depth_orphan_is_root() {
+        let p = [e(9, 42)];
+        assert_eq!(job_depth(&p, 9), 0);
+    }
+
+    /// `job_depth`：真实链 1 -> 2 -> 3。
+    #[test]
+    fn test_depth_chain() {
+        let p = [e(1, 0), e(2, 1), e(3, 2)];
+        assert_eq!(job_depth(&p, 1), 0);
+        assert_eq!(job_depth(&p, 2), 1);
+        assert_eq!(job_depth(&p, 3), 2);
+    }
+
+    /// `job_depth`：成环必须终止。
+    #[test]
+    fn test_depth_cycle_terminates() {
+        let p = [e(1, 2), e(2, 1)];
+        let d = job_depth(&p, 2);
+        assert!(d <= p.len() as u32 + 1, "must be bounded by table size");
+    }
+
+    /// `job_depth`：自环不吃自己。
+    #[test]
+    fn test_depth_self_loop() {
+        let p = [e(5, 5)];
+        assert_eq!(job_depth(&p, 5), 0);
+    }
+
+    /// `job_depth`：pid 不在表中 → 0。
+    #[test]
+    fn test_depth_unknown_pid() {
+        let p = [e(1, 0)];
+        assert_eq!(job_depth(&p, 77), 0);
+    }
+    /// `job_lines`：作业根一行 + 后代各一行，顺序与 `job_subtree` 一致。
+    #[test]
+    fn test_job_lines_root_and_children() {
+        // 1 -> 2 -> {3, 4}
+        let p = [e(1, 0), e(2, 1), e(3, 2), e(4, 2)];
+        let lines = job_lines(&p, 2, 1);
+        assert_eq!(lines.len(), 3, "root + two descendants");
+        assert_eq!(lines[0], JobLine { job: 1, pid: 2, is_root: true });
+        assert_eq!(lines[1], JobLine { job: 0, pid: 3, is_root: false });
+        assert_eq!(lines[2], JobLine { job: 0, pid: 4, is_root: false });
+    }
+
+    /// `job_lines`：根已退出（不在 alive 中）仍呈现根一行。
+    #[test]
+    fn test_job_lines_dead_root_still_listed() {
+        let p = [e(1, 0)];
+        let lines = job_lines(&p, 99, 3);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], JobLine { job: 3, pid: 99, is_root: true });
+    }
+
+    /// `job_lines`：无子进程的作业只有一行。
+    #[test]
+    fn test_job_lines_leaf_job() {
+        let p = [e(1, 0), e(5, 1)];
+        let lines = job_lines(&p, 5, 2);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].pid, 5);
     }
 }
