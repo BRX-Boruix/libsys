@@ -193,6 +193,12 @@ pub struct StatInfo {
     pub owner_uid: u32,
     /// 属主 gid（同上）。
     pub owner_gid: u32,
+    /// 本 fd 是否为终端（ADR-044 §1.2 / J-TOKEN-A 尾部追加）：`1`=是，`0`=否/未知。
+    ///
+    /// 这是 `isatty` 的**真值来源**，取代此前 `libc` 里 `fd ∈ {0,1,2} → 1` 的
+    /// 硬编码猜测：终端性跟着**节点**走，不跟着 fd 号走，故 stdout 被重定向到
+    /// 普通文件后如实为 0。`0` 兼作「未知」（内核旧版/无该字段时）。
+    pub is_terminal: u32,
 }
 
 /// PRE-12 / A1-4：**两侧镜像一致性断言**（编译期钉死）。
@@ -200,11 +206,12 @@ pub struct StatInfo {
 /// 字面值与 kernel `vfs::inode::StatInfo` 侧的断言**逐值相同**——任一侧
 /// 改字段而另一侧未同步，本侧字面断言即编译失败（S06 跨边界数据契约）。
 /// 布局：node_type@0 size@8 perms@16 created@24 modified@32 changed@40
-/// owner_uid@48 owner_gid@52，sizeof=56（repr(C)，尾部追加只增不改）。
+/// owner_uid@48 owner_gid@52 is_terminal@56，sizeof=64（repr(C)，尾部追加只增不改）。
 const _: () = {
-    assert!(core::mem::size_of::<StatInfo>() == 56, "StatInfo layout drifted: sync kernel mirror");
+    assert!(core::mem::size_of::<StatInfo>() == 64, "StatInfo layout drifted: sync kernel mirror");
     assert!(core::mem::offset_of!(StatInfo, owner_uid) == 48);
     assert!(core::mem::offset_of!(StatInfo, owner_gid) == 52);
+    assert!(core::mem::offset_of!(StatInfo, is_terminal) == 56);
 };
 
 /// 进程身份查询结果（A2-1 / ADR-040 §3.5 G1；与内核 `task::IdentityInfo` 同布局的镜像）。
