@@ -368,6 +368,41 @@ pub fn waitpid_any() -> Result<WaitResult, Error> {
     Ok(WaitResult { pid: r10, code: ret })
 }
 
+/// `waitpid_any_timeout(timeout_ns)`：**有界**等待任意直接子进程退出（§6.11 裁决 B）。
+///
+/// 最多等待 `timeout_ns` 纳秒：
+/// * 子进程在期限内退出 → `Ok(WaitResult { pid, code })`（与 [`waitpid_any`] 同语义）；
+/// * **期限内没等到** → `Err(WouldBlock)`——**如实**告知「还没等到、可重试」，
+///   **绝不**编造一个退出码（S09：宁可如实报未等到，也不给会误导的假成功）；
+/// * 无子进程/目标非法 → `Err(NotFound)`。
+///
+/// ## 为什么需要它
+///
+/// `waitpid_any()` 在子进程运行期间会**真阻塞**，只在子进程退出时被唤醒。
+/// 若调用方还想在等待期间**做别的事**（如轮询 stdin 以便前台子进程运行时
+/// 也能响应 `^C`），就必须用有界形态：等到就处理退出，超时就先去干别的事、
+/// 再回来等。
+///
+/// ## 边界纪律（调用方须知）
+///
+/// 超时**不会**收走子进程，也**不会**改变子进程状态——它只是「本次没等到」。
+/// 调用方须自行保存「我在等谁」并重复调用（本函数内部即 waitpid_any 语义，
+/// 故可安全重试）。
+pub fn waitpid_any_timeout(timeout_ns: u64) -> Result<WaitResult, Error> {
+    let (ret, r10) = crate::syscall::invoke_capture_r10(
+        SYS_TASK_WAIT,
+        WAIT_ANY,
+        timeout_ns,
+        0,
+        0,
+        0,
+        0,
+    );
+    if ret & (1u64 << 63) != 0 {
+        return Err(crate::error::Error::from_errno((ret as i64).wrapping_neg() as i32));
+    }
+    Ok(WaitResult { pid: r10, code: ret })
+}
 /// 进程身份查询结果（A2-1；与内核 `kernel::syscall::IdentityInfo` 同布局镜像）。
 ///
 /// `#[repr(C)]` 固定布局，跨边界真实数据合约（PRE-12 纪律，同 `io::StatInfo`）；
