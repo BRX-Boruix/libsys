@@ -51,6 +51,43 @@ const fn nr(d: u32, o: u32) -> u32 {
 /// `pread`/`pwrite`，其中 `0` 是文件起始位置。
 pub const STREAM_OFFSET_CURRENT: u64 = u64::MAX;
 
+/// `SYS_STREAM_READ` 的 `a5` 标志位：**非阻塞读**（§6.12.5，所有者裁决甲）。
+///
+/// # 为什么用户态需要它
+///
+/// 「**看一眼**键盘，有没有都立刻回来」与「**等着要**一个字符」是两种语义。
+/// 前台等待循环里的探键需要前者：拿到 `^C` 就投递 `SIGINT`，没有就立刻回去
+/// 继续 `waitpid`。
+///
+/// 用阻塞 `read` 实现探键是**错的**——交互 stdin 空读会让内核登记等待者并
+/// 切走本进程，子进程死后 shell 就永远卡在探键上（实测挂死）。
+///
+/// # 与 [`read`] 的关系
+///
+/// **同一个内核动词**，仅 `a5` 标志不同（S13 单点语义：不新增动词，
+/// 避免「两个几乎一样但行为微妙不同」的读接口）。
+///
+/// # 取值
+///
+/// 与内核 `STREAM_READ_NONBLOCK` 必须**逐位一致**（PRE-12：内核↔libsys
+/// 同步改动）。改这里就必须同时改那里，且两侧都有测试钉住取值。
+pub const STREAM_READ_NONBLOCK: u64 = 1;
+
+/// `SYS_STREAM_READ` 的 `a5` 标志位：**预览**（不消费）。
+///
+/// # 与 [`STREAM_READ_NONBLOCK`] 的关系
+///
+/// 两者独立：`NONBLOCK` 表示「没数据就别阻塞」，
+/// `PEEK` 表示「别把字节取走」。目前探键用法同时置位，
+/// 但它们语义上可分离（例如未来可能有「阻塞式预览」）。
+///
+/// # 为何必须有 PEEK
+///
+/// 若只有 NONBLOCK，探键仍必须**取走**字节才能知道它是不是 `^C`。
+/// 那么属于子进程的普通按键就会被静默丢弃（实测：
+/// `/programs/spinburn.elf` 变成 `/prams/spinburn.elf`，`o`/`g` 丢失）。
+pub const STREAM_READ_PEEK: u64 = 2;
+
 // ---------- 1. STREAM Domain (0x10) ----------
 /// `stream_create(path_ptr, flags, mode) -> handle`：打开或创建流/文件。
 pub const SYS_STREAM_CREATE: u32 = nr(domain::STREAM, op::CREATE); // 0x11

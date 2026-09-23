@@ -810,4 +810,30 @@ mod tree_tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].pid, 5);
     }
+
+    /// §6.12.5（所有者裁决甲）：`STREAM_READ_NONBLOCK` 取值必须与内核一致。
+    ///
+    /// # 为什么这条测试必须存在（PRE-12 同步守卫）
+    ///
+    /// 该标志是**内核与用户态的共享 ABI**：用户态传 `a5`，内核按位判定。
+    /// 两侧各有一份常量定义（`libsys/src/nr.rs` 与 `kernel/.../syscall.rs`），
+    /// 它们**无法互相 import**（不同 crate、不同 target）。
+    ///
+    /// 一旦有人只改一侧，故障是**静默**的：用户态传 1，内核若认为它是 2，
+    /// 判定就不成立 —— 探键悄悄退回**阻塞**语义，`^C` 挂死缺陷原样复活，
+    /// 而编译器不会有任何抱怨。这正是「静默语义漂移」，必须用测试钉死。
+    ///
+    /// 本测试断言的是**字面值**，与内核侧 `test_read_nonblock_flag` 里的
+    /// 同名断言**成对**：改任一侧都会让另一侧的测试变红，
+    /// 从而强制改动者同时更新内核常量、用户态常量与两处文档。
+    #[test]
+    fn test_stream_read_nonblock_matches_kernel_abi() {
+        // 1：内核 `kernel/src/syscall.rs` 的 `STREAM_READ_NONBLOCK`。
+        // 改这个数就必须同时改内核侧——否则两侧对同一比特的理解不一致。
+        assert_eq!(crate::nr::STREAM_READ_NONBLOCK, 1);
+        // 该常量处于 `a5` 的**最低位**：这一点也有意义——
+        // 低位便于将来在同一个 `a5` 里再叠别的标志（如 O_NDELAY 语义扩展），
+        // 而不必挪动既有位。若改成非最低位，本断言会强制复核这一决定。
+        assert_eq!(crate::nr::STREAM_READ_NONBLOCK & 1, 1, "应为最低位");
+    }
 }

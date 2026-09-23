@@ -57,6 +57,8 @@ pub use error::Error;
 pub use io::{
     DirEntry, GATE_SYSTEM_BIT, OpenFlags, Permissions, STDERR, STDIN, STDOUT, StatInfo, chdir,
     chmod, chown, close, dup2, fstat, getcwd, mkdir, open, pread, pwrite, read, read_dir,
+    // §6.12.5（裁决甲）：非阻塞读（探键用，不登记等待者）。
+    read_nonblocking,
     read_to_end, rename, stat, unlink, write,
 };
 // A2-6 / ADR-040 §3.5.1 G4：显式 ACE 通道的用户态封装与 wire 镜像。

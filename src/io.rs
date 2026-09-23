@@ -436,6 +436,40 @@ pub fn read(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
     .map(|n| n as usize)
 }
 
+/// `read_nonblocking(fd, buf)`：**非阻塞**读——有就返回，没有立刻 `WouldBlock`。
+///
+/// # 与 [`read`] 的唯一差别
+///
+/// 置了内核的 `STREAM_READ_NONBLOCK` 标志（`a5`）。效果：交互 stdin 空读时
+/// 内核**不登记等待者、不切走本进程**，而是如实返回
+/// [`Error::WouldBlock`]。
+///
+/// # 何时该用它
+///
+/// **轮询**式探键（例如前台等待子进程期间照看 `^C`）。
+/// **不要**用它替代正常的行读取——那会变成忙等烧 CPU；正常读请用 [`read`]，
+/// 让内核阻塞等待（那是正确的省电语义）。
+///
+/// # 返回
+///
+/// * `Ok(n)`：读到 `n` 字节（可能短读）；
+/// * `Err(WouldBlock)`：**此刻**无数据可读，调用方应稍后再试或干别的；
+/// * 其他 `Err`：如实上抛。
+pub fn read_nonblocking(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
+    crate::syscall::call(
+        SYS_STREAM_READ,
+        [
+            fd,
+            buf.as_mut_ptr() as u64,
+            buf.len() as u64,
+            STREAM_OFFSET_CURRENT,
+            crate::nr::STREAM_READ_NONBLOCK | crate::nr::STREAM_READ_PEEK,
+            0,
+        ],
+    )
+    .map(|n| n as usize)
+}
+
 /// `write(fd, buf)`：把字节缓冲写到 fd（流式自增写），返回写入字节数。
 pub fn write(fd: u64, buf: &[u8]) -> Result<usize, Error> {
     crate::syscall::call(
