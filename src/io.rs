@@ -199,6 +199,12 @@ pub struct StatInfo {
     /// 硬编码猜测：终端性跟着**节点**走，不跟着 fd 号走，故 stdout 被重定向到
     /// 普通文件后如实为 0。`0` 兼作「未知」（内核旧版/无该字段时）。
     pub is_terminal: u32,
+    /// 本节点所属 console 的 **owner pid**（ADR-044 §1.3 / J-TOKEN-B 尾部追加）：
+    /// `0` = **无主/未知**（S17 安全侧默认，与 `is_terminal` 的 0 同一约定）。
+    ///
+    /// **`0` 不得读作「pid 0 持有控制台」**：它表示「无主/未知」。
+    /// 真值来自节点自述（`INode::console_owner`，S15 单点定义）。
+    pub console_owner: u64,
 }
 
 /// PRE-12 / A1-4：**两侧镜像一致性断言**（编译期钉死）。
@@ -206,12 +212,14 @@ pub struct StatInfo {
 /// 字面值与 kernel `vfs::inode::StatInfo` 侧的断言**逐值相同**——任一侧
 /// 改字段而另一侧未同步，本侧字面断言即编译失败（S06 跨边界数据契约）。
 /// 布局：node_type@0 size@8 perms@16 created@24 modified@32 changed@40
-/// owner_uid@48 owner_gid@52 is_terminal@56，sizeof=64（repr(C)，尾部追加只增不改）。
+/// owner_uid@48 owner_gid@52 is_terminal@56 console_owner@64，sizeof=72
+/// （repr(C)，尾部追加只增不改；J-TOKEN-B 追加 console_owner）。
 const _: () = {
-    assert!(core::mem::size_of::<StatInfo>() == 64, "StatInfo layout drifted: sync kernel mirror");
+    assert!(core::mem::size_of::<StatInfo>() == 72, "StatInfo layout drifted: sync kernel mirror");
     assert!(core::mem::offset_of!(StatInfo, owner_uid) == 48);
     assert!(core::mem::offset_of!(StatInfo, owner_gid) == 52);
     assert!(core::mem::offset_of!(StatInfo, is_terminal) == 56);
+    assert!(core::mem::offset_of!(StatInfo, console_owner) == 64);
 };
 
 /// 进程身份查询结果（A2-1 / ADR-040 §3.5 G1；与内核 `task::IdentityInfo` 同布局的镜像）。
@@ -864,6 +872,53 @@ pub(crate) fn clamp_read_n(n: usize, buf_len: usize) -> usize {
 
 #[cfg(test)]
 mod io_tests {
+    /// J-TOKEN-B / PRE-12：**ABI 尺寸在用户侧独立钉死**。
+    ///
+    /// 内核侧（`vfs::inode`）与用户侧（本文件）各有一次编译期断言，
+    /// 二者**各自独立**断言 72 —— 任一侧改字段而另一侧未同步，
+    /// 该侧编译即失败（S06 跨边界真实数据契约）。
+    ///
+    /// 本测试把该断言**在宿主上再跑一遍**：编译期断言只在被编译时生效，
+    /// 而本测试保证「当前源码树里两侧同值」这一事实被显式验证，
+    /// 而不是靠「编译过了所以肯定一致」的推断。
+    #[test]
+    fn statinfo_abi_layout_is_72_bytes() {
+        use core::mem::{offset_of, size_of};
+        assert_eq!(size_of::<crate::io::StatInfo>(), 72, "StatInfo sizeof (J-TOKEN-B)");
+        // 尾部追加纪律：既有字段偏移一律不变。
+        assert_eq!(offset_of!(crate::io::StatInfo, node_type), 0);
+        assert_eq!(offset_of!(crate::io::StatInfo, size), 8);
+        assert_eq!(offset_of!(crate::io::StatInfo, perms), 16);
+        assert_eq!(offset_of!(crate::io::StatInfo, created_time), 24);
+        assert_eq!(offset_of!(crate::io::StatInfo, modified_time), 32);
+        assert_eq!(offset_of!(crate::io::StatInfo, changed_time), 40);
+        assert_eq!(offset_of!(crate::io::StatInfo, owner_uid), 48);
+        assert_eq!(offset_of!(crate::io::StatInfo, owner_gid), 52);
+        assert_eq!(offset_of!(crate::io::StatInfo, is_terminal), 56);
+        // J-TOKEN-B 新增字段：u32 之后按 u64 对齐，落在 64。
+        assert_eq!(offset_of!(crate::io::StatInfo, console_owner), 64);
+    }
+
+    /// J-TOKEN-B：`0` 表示**无主/未知**，不是「pid 0 持有控制台」。
+    ///
+    /// 这是本项最容易误读的一点，故用测试钉死语义：默认构造的 StatInfo
+    /// 的 console_owner 必须是 0，且该值被解释为「没有人持有」。
+    #[test]
+    fn statinfo_default_console_owner_is_unowned() {
+        let si = crate::io::StatInfo {
+            node_type: 0,
+            size: 0,
+            perms: 0,
+            created_time: 0,
+            modified_time: 0,
+            changed_time: 0,
+            owner_uid: 0,
+            owner_gid: 0,
+            is_terminal: 0,
+            console_owner: 0,
+        };
+        assert_eq!(si.console_owner, 0, "0 = unowned/unknown, NOT pid 0");
+    }
     /// §6.3 对抗测试：名字字段含 JSON 结构字符时不得切错。
     ///
     /// 旧实现按闭合花括号加逗号切分、再按逗号切字段，一旦名字里含 `},{`、`,`、`"`，
