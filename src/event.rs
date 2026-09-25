@@ -378,7 +378,25 @@ impl EventSourceReader {
     /// 返回 0 只在**真的没有任何新字节**时发生（例如整批都是修饰键事件——
     /// 它们合法地不产字节）。调用方据此决定是否继续调用。
     pub fn read_into(&mut self, out: &mut alloc::vec::Vec<u8>) -> Result<usize, Error> {
-        let n = crate::io::read(self.fd, &mut self.buf)?;
+        // **阻塞-唤醒哨兵（关键，实测踩过）**：内核在事件环空时挂起本进程，
+        // 按键到达后**不是**直接把记录返回，而是以 `-EAGAIN` 哨兵唤醒，
+        // 要求用户态**重试** read（`kernel/src/syscall.rs:2297`：
+        // 「`Switched`：已挂起切走，用户态经 `-EAGAIN` 哨兵重试 read」）。
+        //
+        // 故 `WouldBlock` 在此**不是失败**，而是「本轮已阻塞过、请重试」。
+        // 初版把它经 `?` 当错误上抛，于是 `refill` 恒返回 `false`：
+        // 真机症状为「组件 open 成功但按键完全无响应」
+        // （`docs/TODO/terminal-input.md` §6.14.4g，由 `evsrcdemo` 抓出）。
+        //
+        // 语义等价于「本次产出 0 字节」，与「整批都是修饰键事件」同构——
+        // 调用方（`libline::InputSource::refill`）据契约继续重试，
+        // 而非判定 EOF。
+        let n = match crate::io::read(self.fd, &mut self.buf) {
+            Ok(n) => n,
+            Err(Error::WouldBlock) => return Ok(0),
+            Err(e) => return Err(e),
+        };
+
         let before = out.len();
         let _ = decode_into(&mut self.state, &self.buf[..n], out);
         Ok(out.len() - before)
