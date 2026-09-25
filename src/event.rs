@@ -295,6 +295,101 @@ pub fn feed(state: &mut KeymapState, rec: &EventRecord) -> Option<KeyOut> {
     }
 }
 
+/// 事件流读取的结果（[`decode_into`] 的返回值）。
+///
+/// **为何要区分「读到 0 条」与「非记录字节」**（S09）：事件节点是**字符流**，
+/// 理论上传入的字节缓冲恰为 16 的整数倍时不会出现半条；但若缓冲尺寸被调用方
+/// 写错，**静默丢掉尾部半条**会让「按键丢失」与「调用方 bug」无法区分。
+/// 故此处显式回报实际消耗字节数，由调用方自行核对。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecordsRead {
+    /// 已解析并喂入状态机的记录条数。
+    pub count: usize,
+    /// 本次实际消耗的字节数（恒为 `count * EVENT_RECORD_SIZE`）。
+    pub bytes: usize,
+}
+
+/// 把一段**原始事件字节**逐条解析并喂入 `state`，产出的字节追加到 `out`。
+///
+/// **纯函数**（S23）：不碰 fd、不碰时钟，故可在宿主上完整测试。
+/// 这是「事件流 → 字节流」的**唯一转换点**（S13），供 [`EventSourceReader`]
+/// 与宿主测试共同使用，杜绝「测试测的与实际跑的是两套」（S06）。
+///
+/// 尾部不足一条记录的部分**不解析、不计入** `bytes`——它会被如实回报给调用方，
+/// 由调用方决定是补齐缓冲区还是丢弃（本函数不猜测意图，S09）。
+pub fn decode_into(state: &mut KeymapState, raw: &[u8], out: &mut alloc::vec::Vec<u8>) -> RecordsRead {
+    let mut count = 0usize;
+    let mut off = 0usize;
+    while off + EVENT_RECORD_SIZE <= raw.len() {
+        let chunk = &raw[off..off + EVENT_RECORD_SIZE];
+        // 半条已由上面的循环条件排除，故 `parse_record` 必然成功；
+        // 若失败说明内存布局被改动，属编程错误，如实跳过而非伪造（S09）。
+        if let Ok(rec) = parse_record(chunk) {
+            if let Some(k) = feed(state, &rec) {
+                out.extend_from_slice(k.bytes());
+            }
+            count += 1;
+        }
+        off += EVENT_RECORD_SIZE;
+    }
+    RecordsRead { count, bytes: off }
+}
+
+/// `/devices/input/events` 的**阻塞**读取器（I-EVENTS 阶段 2 的消费端）。
+///
+/// # 职责边界
+///
+/// 本类型只管「把事件记录变成字节」；**编辑语义**（光标、历史、Tab 补全）
+/// 仍归 `libline`。二者的粘合点是 `libline::InputSource`——见 `libline` 的
+/// `EventSource`，它内部持有本类型。
+///
+/// # 为何读整条记录（S20 失效模式优先）
+///
+/// `read` 缓冲恒为 `16 * N` 字节，**绝不出现半条**。若用不足 16 字节的缓冲去读，
+/// 事件节点会返回 `Ok(0)`（它的读侧契约是「不半条切割」），而那与「此刻无事件」
+/// 无法区分——正是本类型要消除的歧义。
+pub struct EventSourceReader {
+    fd: u64,
+    state: KeymapState,
+    buf: [u8; EVENT_RECORD_SIZE * 8],
+}
+
+/// 事件流设备路径（单一事实源，S15）。
+pub const EVENTS_PATH: &str = "/devices/input/events";
+
+impl EventSourceReader {
+    /// 打开事件节点；失败如实上抛（无该节点时**不**回退到键盘直读——
+    /// 回退会让「事件流不可用」被静默掩盖，正是阶段 2 要避免的，S09）。
+    pub fn open() -> Result<Self, Error> {
+        let fd = crate::io::open(
+            EVENTS_PATH,
+            crate::io::OpenFlags::READ_ONLY,
+            crate::io::Permissions::readonly(),
+        )?;
+        Ok(Self { fd, state: KeymapState::default(), buf: [0u8; EVENT_RECORD_SIZE * 8] })
+    }
+
+    /// 阻塞读取一批事件，把转换出的字节追加到 `out`，返回**新增字节数**。
+    ///
+    /// **空读不会返回 0**：内核在无事件时登记等待者并挂起本进程
+    /// （`syscall.rs` 的 `input_event_stream()` 分支），IRQ1 到达后唤醒重试。
+    /// 这正是 `libline::InputSource::refill` 契约要求的「阻塞到有数据」语义。
+    ///
+    /// 返回 0 只在**真的没有任何新字节**时发生（例如整批都是修饰键事件——
+    /// 它们合法地不产字节）。调用方据此决定是否继续调用。
+    pub fn read_into(&mut self, out: &mut alloc::vec::Vec<u8>) -> Result<usize, Error> {
+        let n = crate::io::read(self.fd, &mut self.buf)?;
+        let before = out.len();
+        let _ = decode_into(&mut self.state, &self.buf[..n], out);
+        Ok(out.len() - before)
+    }
+
+    /// 关闭底层 fd（显式，避免依赖 drop 的隐式副作用，S21）。
+    pub fn close(self) -> Result<(), Error> {
+        crate::io::close(self.fd)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -424,6 +519,115 @@ mod tests {
         assert_eq!(EVENT_KIND_KEY_UP, 2);
         assert_eq!(EVENT_FLAG_E0, 1);
         assert_eq!(EVENT_FLAG_NO_TIME, 2);
+    }
+
+    // ---------------- 阶段 2：记录批量解码（`decode_into`） ----------------
+
+    /// 把若干事件序列化成事件流的**线格式**（16 字节/条，小端）。
+    fn wire(recs: &[EventRecord]) -> alloc::vec::Vec<u8> {
+        let mut v = alloc::vec::Vec::new();
+        for r in recs {
+            let lo = (r.kind as u64)
+                | ((r.flags as u64) << 8)
+                | ((r.code as u64) << 16)
+                | ((r.value as u64) << 32);
+            v.extend_from_slice(&lo.to_le_bytes());
+            v.extend_from_slice(&r.timestamp.to_le_bytes());
+        }
+        v
+    }
+
+    /// **等价性（本小点的核心判据）**：逐条 `feed` 与成批 `decode_into`
+    /// 必须产出**完全相同**的字节——否则「批量路径」就是第二套语义（S13）。
+    #[test]
+    fn test_decode_into_matches_per_record_feed() {
+        let seq = [
+            down(false, 0x2A),   // Shift 下
+            down(false, 0x1E),   // A
+            up(false, 0x1E),
+            up(false, 0x2A),     // Shift 上
+            down(false, 0x2E),   // c
+            down(false, 0x1D),   // Ctrl 下
+            down(false, 0x2E),   // ^C（Ctrl 折叠字母）
+            up(false, 0x2E),
+            up(false, 0x1D),
+            down(true, 0x48),    // E0 上箭头
+            down(false, 0x1C),   // 回车
+        ];
+        // 逐条路径。
+        let mut s1 = KeymapState::default();
+        let mut expect = alloc::vec::Vec::new();
+        for r in &seq {
+            expect.extend_from_slice(&bytes(&mut s1, r));
+        }
+        // 批量路径（一次喂入全部记录的线格式）。
+        let mut s2 = KeymapState::default();
+        let mut got = alloc::vec::Vec::new();
+        let rr = decode_into(&mut s2, &wire(&seq), &mut got);
+        assert_eq!(rr.count, seq.len(), "must decode every record");
+        assert_eq!(rr.bytes, seq.len() * EVENT_RECORD_SIZE);
+        assert_eq!(got, expect, "batch path must equal per-record path");
+        // 非空的可读性检查：本序列确实产出了字节（避免"两边都空"的假绿）。
+        assert!(expect.contains(&0x03), "sequence must yield ^C (0x03): {:?}", expect);
+        assert!(expect.contains(&b'A'), "sequence must yield Shift-A");
+    }
+
+    /// **分批到达也算数**：事件流是字符设备，一次 `read` 可能只回来半批。
+    /// 分两次喂入与一次喂入必须等价——状态机跨调用保持（这正是
+    /// `EventSourceReader` 持有 `KeymapState` 的理由）。
+    #[test]
+    fn test_decode_into_state_survives_split_batches() {
+        let seq = [down(false, 0x2A), down(false, 0x1E)]; // Shift 下, A
+        let w = wire(&seq);
+        let mut s = KeymapState::default();
+        let mut out = alloc::vec::Vec::new();
+        // 第一批只给第一条记录（Shift 按下）——产 0 字节但**必须留下状态**。
+        let rr1 = decode_into(&mut s, &w[..EVENT_RECORD_SIZE], &mut out);
+        assert_eq!(rr1.count, 1);
+        assert!(out.is_empty(), "Shift alone yields no bytes");
+        // 第二批给第二条记录——上面的 Shift 状态必须还在，故产出大写 A。
+        let rr2 = decode_into(&mut s, &w[EVENT_RECORD_SIZE..], &mut out);
+        assert_eq!(rr2.count, 1);
+        assert_eq!(out, b"A", "Shift state must survive across batches");
+    }
+
+    /// **半条不解析、不伪造**（S09）：尾部不足 16 字节时
+    /// `count`/`bytes` 只计完整记录，半条**不被**当作记录消费。
+    #[test]
+    fn test_decode_into_ignores_partial_trailing_record() {
+        let mut raw = wire(&[down(false, 0x1E)]); // 完整一条（"a"）
+        raw.extend_from_slice(&[0u8; 7]);        // 尾巴 7 字节 = 半条
+        let mut s = KeymapState::default();
+        let mut out = alloc::vec::Vec::new();
+        let rr = decode_into(&mut s, &raw, &mut out);
+        assert_eq!(rr.count, 1, "only the complete record counts");
+        assert_eq!(rr.bytes, EVENT_RECORD_SIZE, "partial tail not consumed");
+        assert_eq!(out, b"a");
+    }
+
+    /// 空输入是合法的「0 条」，不是错误、也不产字节。
+    #[test]
+    fn test_decode_into_empty_input() {
+        let mut s = KeymapState::default();
+        let mut out = alloc::vec::Vec::new();
+        let rr = decode_into(&mut s, &[], &mut out);
+        assert_eq!(rr.count, 0);
+        assert_eq!(rr.bytes, 0);
+        assert!(out.is_empty());
+    }
+
+    /// 指针类 kind（3/4/5，ADR-047 预留）本模块不认识：
+    /// **不计入 count、不产字节**，且**不得**让整批解码中断。
+    #[test]
+    fn test_decode_into_unknown_kind_does_not_abort_batch() {
+        let unknown = EventRecord { kind: 3, flags: 0, code: 0, value: 0, timestamp: 0 };
+        let seq = [unknown, down(false, 0x1E)];
+        let mut s = KeymapState::default();
+        let mut out = alloc::vec::Vec::new();
+        let rr = decode_into(&mut s, &wire(&seq), &mut out);
+        // 两条都被解析（都在 16 字节边界上），第 2 条照常产出。
+        assert_eq!(rr.count, 2, "unknown kind is still a parsed record");
+        assert_eq!(out, b"a", "batch must continue past an unknown kind");
     }
 }
 
