@@ -378,24 +378,28 @@ impl EventSourceReader {
     /// 返回 0 只在**真的没有任何新字节**时发生（例如整批都是修饰键事件——
     /// 它们合法地不产字节）。调用方据此决定是否继续调用。
     pub fn read_into(&mut self, out: &mut alloc::vec::Vec<u8>) -> Result<usize, Error> {
-        // **阻塞-唤醒哨兵（关键，实测踩过）**：内核在事件环空时挂起本进程，
-        // 按键到达后**不是**直接把记录返回，而是以 `-EAGAIN` 哨兵唤醒，
-        // 要求用户态**重试** read（`kernel/src/syscall.rs:2297`：
-        // 「`Switched`：已挂起切走，用户态经 `-EAGAIN` 哨兵重试 read」）。
+        // **阻塞-唤醒哨兵：必须原样上抛，不得吞掉（关键，实测踩过）**。
         //
-        // 故 `WouldBlock` 在此**不是失败**，而是「本轮已阻塞过、请重试」。
-        // 初版把它经 `?` 当错误上抛，于是 `refill` 恒返回 `false`：
-        // 真机症状为「组件 open 成功但按键完全无响应」
-        // （`docs/TODO/terminal-input.md` §6.14.4g，由 `evsrcdemo` 抓出）。
+        // 内核在事件环空时**挂起本进程**，按键到达后以 `-EAGAIN` 哨兵唤醒，
+        // 要求用户态**重试** `read`（`kernel/src/syscall.rs:2297`：
+        // 「已挂起切走，用户态经哨兵重试 read」）。
         //
-        // 语义等价于「本次产出 0 字节」，与「整批都是修饰键事件」同构——
-        // 调用方（`libline::InputSource::refill`）据契约继续重试，
-        // 而非判定 EOF。
-        let n = match crate::io::read(self.fd, &mut self.buf) {
-            Ok(n) => n,
-            Err(Error::WouldBlock) => return Ok(0),
-            Err(e) => return Err(e),
-        };
+        // 【实测缺陷记录·两次都栽在这里】
+        //
+        // 初版：`crate::io::read(...)?` —— 把哨兵**当错误上抛**，
+        //       `refill` 于是恒返回 `false`，按键完全无响应。
+        //
+        // 第二版（**错误方向**）：在这里把哨兵**吞成** `Ok(0)`，
+        //       以为「本轮 0 字节」与「整批修饰键」同构。**但两者根本不同构**：
+        //       修饰键是「数据已消费、下次再来」，哨兵是「**现在我就要你重试**」。
+        //       吞掉后上层失去重试信号，只能靠外层循环空转——
+        //       真机症状正是「会话冻结、宿主 CPU 28%」（§6.14.4i）。
+        //
+        // **正确形态（本版）**：哨兵**原样传播**给调用方，由它决定重试时机。
+        // 对照证据：`evdemo`（同路径、同内核）在 `WouldBlock` 上直接
+        // `continue` **立刻重试 read**，全程正常并在退出后把控制权交还 shell。
+        // 两者唯一差别就是「是否保留了哨兵」，这就是本缺陷的判据。
+        let n = crate::io::read(self.fd, &mut self.buf)?;
 
         let before = out.len();
         let _ = decode_into(&mut self.state, &self.buf[..n], out);
