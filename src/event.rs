@@ -406,6 +406,29 @@ impl EventSourceReader {
         Ok(out.len() - before)
     }
 
+    /// 读取**原始事件记录**（不转换、不产出字节），追加到 `out`。
+    ///
+    /// **与 [`Self::read_into`] 的分工（S13 单一语义）**：
+    /// - `read_records`：只做「设备 → 原始记录字节」，转换交给调用方（libline 的
+    ///   `refill`，与宿主测试的 `ScriptedEvents` 契约**同构**——注入什么转换什么，
+    ///   转换恰好发生一次）；
+    /// - `read_into`：一步到位「设备 → 字节」，给不经过 `libline` 的调用者。
+    ///
+    /// 【实测缺陷记录（§6.14.4n，由内核计数器定位）】生产 `fetch` 原本直调
+    /// `read_into`，于是**转换发生了两次**：`read_into` 转出字节后，`refill`
+    /// 又把字节当 16 字节记录再转一次——按键因此永远不出正确字符
+    /// （`evsrcdemo` 0/10、内核 `blocked` 计数证明唤醒链路完好）。
+    /// 阻塞-唤醒哨兵的传播（本类型前两轮修复）是**必要但不充分**的：
+    /// 哨兵修好后数据能到达，却毁于第二次转换。
+    ///
+    /// 阻塞语义与 `read_into` 相同：环空时内核挂起本进程，唤醒后
+    /// 经 `-EAGAIN` 哨兵要求重试，原样上抛。
+    pub fn read_records(&mut self, out: &mut alloc::vec::Vec<u8>) -> Result<usize, Error> {
+        let n = crate::io::read(self.fd, &mut self.buf)?;
+        out.extend_from_slice(&self.buf[..n]);
+        Ok(n)
+    }
+
     /// 关闭底层 fd（显式，避免依赖 drop 的隐式副作用，S21）。
     pub fn close(self) -> Result<(), Error> {
         crate::io::close(self.fd)
