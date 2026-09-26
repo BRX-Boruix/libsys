@@ -318,6 +318,7 @@ pub struct RecordsRead {
 /// 尾部不足一条记录的部分**不解析、不计入** `bytes`——它会被如实回报给调用方，
 /// 由调用方决定是补齐缓冲区还是丢弃（本函数不猜测意图，S09）。
 pub fn decode_into(state: &mut KeymapState, raw: &[u8], out: &mut alloc::vec::Vec<u8>) -> RecordsRead {
+    DC_CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     let mut count = 0usize;
     let mut off = 0usize;
     while off + EVENT_RECORD_SIZE <= raw.len() {
@@ -327,12 +328,33 @@ pub fn decode_into(state: &mut KeymapState, raw: &[u8], out: &mut alloc::vec::Ve
         if let Ok(rec) = parse_record(chunk) {
             if let Some(k) = feed(state, &rec) {
                 out.extend_from_slice(k.bytes());
+                DC_BYTES.fetch_add(k.bytes().len() as u64, core::sync::atomic::Ordering::Relaxed);
             }
             count += 1;
+            DC_RECS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         }
         off += EVENT_RECORD_SIZE;
     }
     RecordsRead { count, bytes: off }
+}
+
+/// 读路径遥测（demo stats 行的数据源，S09 可观察）：
+/// 读调用数 / 读到的原始字节数 / 解析成功记录数 / 产出键字节 / decode 调用数。
+static UR_CALLS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static UR_BYTES: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static DC_CALLS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static DC_BYTES: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static DC_RECS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// 读路径遥测快照：`(read_calls, read_bytes, decoded_recs, decoded_bytes, decode_calls)`。
+pub fn debug_read_stats() -> (u64, u64, u64, u64, u64) {
+    (
+        UR_CALLS.load(core::sync::atomic::Ordering::Relaxed),
+        UR_BYTES.load(core::sync::atomic::Ordering::Relaxed),
+        DC_RECS.load(core::sync::atomic::Ordering::Relaxed),
+        DC_BYTES.load(core::sync::atomic::Ordering::Relaxed),
+        DC_CALLS.load(core::sync::atomic::Ordering::Relaxed),
+    )
 }
 
 /// `/devices/input/events` 的**阻塞**读取器（I-EVENTS 阶段 2 的消费端）。
@@ -424,8 +446,10 @@ impl EventSourceReader {
     /// 阻塞语义与 `read_into` 相同：环空时内核挂起本进程，唤醒后
     /// 经 `-EAGAIN` 哨兵要求重试，原样上抛。
     pub fn read_records(&mut self, out: &mut alloc::vec::Vec<u8>) -> Result<usize, Error> {
+        UR_CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         let n = crate::io::read(self.fd, &mut self.buf)?;
         out.extend_from_slice(&self.buf[..n]);
+        UR_BYTES.fetch_add(n as u64, core::sync::atomic::Ordering::Relaxed);
         Ok(n)
     }
 
