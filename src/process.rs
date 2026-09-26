@@ -144,6 +144,53 @@ pub fn parse_proc_list(text: &str, buf: &mut [PsEntry]) -> Result<usize, Error> 
     Ok(count)
 }
 
+/// 在 `/processes/list` 文本中按**进程名精确匹配**查找 pid（第一个命中）。
+///
+/// 用途：init 的 consoled 看门狗（§6.15.6 遗留 #6）——判定守护是否存活。
+/// 走 `JsonParser` 精确取 `name` 字段做全等比较（S13/S09：不做子串猜谜——
+/// `"consoled"` 子串会误命中 `consoled-e2e` 这类名字）。最多命中一个：
+/// 进程名在 procfs 侧不保证全局唯一（同名可执行可并存），本函数如实返回
+/// **第一个**命中项（pid 升序 = 内核表序），调用方语义是「是否有名为 X 的
+/// 进程活着」，不承担「哪个实例」的裁定。
+pub fn pid_of_name(text: &str, name: &str) -> Option<u32> {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('[') {
+        return None;
+    }
+    let value = crate::json::JsonParser::new(trimmed).parse().ok()?;
+    let items = match value {
+        crate::json::JsonValue::Array(items) => items,
+        _ => return None,
+    };
+    for item in items {
+        let fields = match item {
+            crate::json::JsonValue::Object(fields) => fields,
+            _ => continue,
+        };
+        let mut pid: Option<u32> = None;
+        let mut matched = false;
+        for (key, val) in &fields {
+            match key.as_str() {
+                "pid" => pid = json_u32(val),
+                "name" => {
+                    if let crate::json::JsonValue::String(s) = val {
+                        matched = s.as_str() == name;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if matched {
+            if let Some(p) = pid {
+                if p != 0 {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
 
 // ===========================================================================
 // J-TREE-b（ADR-043 支柱 1）：作业树构造（纯逻辑）
@@ -835,5 +882,44 @@ mod tree_tests {
         // 低位便于将来在同一个 `a5` 里再叠别的标志（如 O_NDELAY 语义扩展），
         // 而不必挪动既有位。若改成非最低位，本断言会强制复核这一决定。
         assert_eq!(crate::nr::STREAM_READ_NONBLOCK & 1, 1, "应为最低位");
+    }
+
+    // ---- pid_of_name（init consoled 看门狗的查找真值，I-EVENTS #6）----
+
+    #[test]
+    fn test_pid_of_name_finds_exact_match() {
+        let text = wrap(&[
+            entry(1, "init", "Running", 0),
+            entry(5, "consoled", "Blocked", 1),
+            entry(7, "login", "Blocked", 1),
+        ]);
+        assert_eq!(pid_of_name(&text, "consoled"), Some(5));
+        assert_eq!(pid_of_name(&text, "init"), Some(1));
+    }
+
+    #[test]
+    fn test_pid_of_name_rejects_substring_and_missing() {
+        let text = wrap(&[
+            entry(9, "consoled-e2e", "Blocked", 1),
+            entry(4, "consoled-demo", "Blocked", 1),
+        ]);
+        // 子串不得误命中（S13 精确匹配）："consoled" ≠ "consoled-e2e"。
+        assert_eq!(pid_of_name(&text, "consoled"), None);
+        assert_eq!(pid_of_name(&text, "consoled-e2e"), Some(9));
+        // 缺席的名字与畸形输入如实返回 None（不伪造）。
+        assert_eq!(pid_of_name(&text, "nope"), None);
+        assert_eq!(pid_of_name("not json", "x"), None);
+        assert_eq!(pid_of_name("", "x"), None);
+    }
+
+    #[test]
+    fn test_pid_of_name_first_hit_wins_and_skips_pid_zero() {
+        // 同名多实例：返回第一个（内核表序）。pid=0 的记录（非法）被跳过。
+        let text = wrap(&[
+            entry(0, "consoled", "Ready", 1),
+            entry(12, "consoled", "Blocked", 1),
+            entry(13, "consoled", "Blocked", 1),
+        ]);
+        assert_eq!(pid_of_name(&text, "consoled"), Some(12));
     }
 }

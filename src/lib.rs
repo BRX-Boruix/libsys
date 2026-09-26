@@ -74,8 +74,8 @@ pub use pipe::pipe_create;
 pub use power::{power_off, reboot};
 pub use process::{
     PsEntry, WAIT_ANY, WaitResult, derive, derive_inherit, exec, exec_path, exit,
-    JobLine, getpid, gettid, job_depth, job_lines, job_roots, job_subtree, kill, ps, ps_list,
-    waitpid_any, waitpid_any_timeout, yield_now,
+    JobLine, getpid, gettid, job_depth, job_lines, job_roots, job_subtree, kill, pid_of_name,
+    ps, ps_list, waitpid_any, waitpid_any_timeout, yield_now,
 };
 // A2-1 / ADR-040 §3.5 G1：身份查询与变更。**此前未在 crate 根重导出**——A2-1 落地时
 // 只定义了 `process::identity_*`，`process` 模块私有，故用户程序实际**无法调用**它们
