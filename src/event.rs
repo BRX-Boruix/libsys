@@ -459,6 +459,61 @@ impl EventSourceReader {
     }
 }
 
+/// console 设备路径（P2 落地的字节端节点；单一事实源，S15）。
+pub const CONSOLE_PATH: &str = "/devices/console";
+
+/// `/devices/console` 的**写端**（阶段 3 consoled 的产出通道）。
+///
+/// **职责边界（S13 单一语义）**：本类型只做「字节 → console 环」的交付；
+/// 事件读取与 事件→字节 转换归调用方组装（consoled），不给「一步到位」
+/// 的组合门面——组合方式（先转换后写、何时 flush、如何处理环满）是
+/// consoled 的策略，塞进库里会让第二个调用方被迫接受第一个的策略。
+///
+/// # 失败模式（S20，先于正常路径成文）
+///
+/// - **打开失败**：`open` 如实上抛。consoled 收到后必须报错退出（节点
+///   缺失 = 系统装配错误，静默运行 = 伪服务）；
+/// - **环满（`write` 返回 n < buf.len()）**：**不重试、不缓存、不丢账**——
+///   短写数如实返回给调用方。重试策略（立即重写剩余部分 / 丢弃 / 计数）
+///   是 consoled 的策略；库若自作主张重试，consoled 的单线程循环会在
+///   「事件流读者」与「写端重试」之间互相占住 CPU（audiod 同款教训）；
+///   缓存则引入无界内存。**丢弃会计入内核 `dropped` 计数（status 可见）**，
+///   不产生静默失败（S09：丢的是真字节，账是真账）。
+pub struct ConsoleWriter {
+    fd: u64,
+}
+
+impl ConsoleWriter {
+    /// 打开 console 写端；失败如实上抛（S09，与 `EventSourceReader::open`
+    /// 同一纪律：缺节点 = 装配错误，不回退不静默）。
+    pub fn open() -> Result<Self, Error> {
+        let fd = crate::io::open(
+            CONSOLE_PATH,
+            crate::io::OpenFlags::WRITE_ONLY,
+            // 权限参数是**创建**用模板（A1-1：wire 只传 mode）；本节点已由
+            // 内核 0777 铸好，此处 readonly/write_only 皆不影响打开结果。
+            // 传 read_write 与「写端」意图一致，不为省事传 readonly。
+            crate::io::Permissions::read_write(),
+        )?;
+        Ok(Self { fd })
+    }
+
+    /// 写一段字节进 console 环，返回**实际写入数**（可短写）。
+    ///
+    /// 内核侧：`ConsoleNode::write_at` → `ConsoleRing::write`（SPSC，
+    /// 满 = 短写）→ `notify_data_ready()`（n>0 时唤醒等待者）。返回 0 只在
+    /// 环满且 buf 非空时发生——调用方据此决策，本类型不猜测意图。
+    pub fn write(&self, buf: &[u8]) -> Result<usize, Error> {
+        crate::io::write(self.fd, buf)
+    }
+
+    /// 关闭写端 fd（显式，避免依赖 drop 的隐式副作用，S21；与
+    /// `EventSourceReader::close` 同款纪律）。
+    pub fn close(self) -> Result<(), Error> {
+        crate::io::close(self.fd)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,6 +752,17 @@ mod tests {
         // 两条都被解析（都在 16 字节边界上），第 2 条照常产出。
         assert_eq!(rr.count, 2, "unknown kind is still a parsed record");
         assert_eq!(out, b"a", "batch must continue past an unknown kind");
+    }
+
+    // ---------------- 阶段 3：console 写端（`ConsoleWriter`） ----------------
+
+    /// 路径常量是 ABI 契约：consoled（写端）与 P4 切换（读端）都认这一个
+    /// 字符串——内核 devfs 挂载点若改名，这里必须同步（PRE-12 同款纪律）。
+    #[test]
+    fn test_console_path_constant() {
+        assert_eq!(CONSOLE_PATH, "/devices/console");
+        // 与事件流路径并存不冲突（两个不同节点，S15 各自单一事实源）。
+        assert_ne!(CONSOLE_PATH, EVENTS_PATH);
     }
 }
 
