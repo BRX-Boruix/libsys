@@ -103,6 +103,11 @@ pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14
 pub const SYS_STREAM_DUP: u32 = nr(domain::STREAM, 0x05); // 0x15
 /// `stream_fstat(fd, out_buf_ptr) -> len`：按 fd 读元数据（收 `StatInfo` 定长结构）。
 pub const SYS_STREAM_FSTAT: u32 = nr(domain::STREAM, 0x07); // 0x17
+/// `focus_set(instance) -> 0`（SYS_STREAM_FOCUS_SET，ADR-048 T3，owner 裁决
+/// α）：焦点实例切换。**内核门禁 CAP_SYSTEM**——login 在认证成功后、降权
+/// 前调用（tcsetpgrp 同构：机制内核、策略用户态）。非特权/越界如实
+/// EACCES/EINVAL。与内核 syscall.rs 双侧常量互指（PRE-12 纪律）。
+pub const SYS_STREAM_FOCUS_SET: u32 = nr(domain::STREAM, 0x08); // 0x18
 
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。

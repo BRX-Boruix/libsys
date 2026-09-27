@@ -462,6 +462,26 @@ impl EventSourceReader {
 /// console 设备路径（P2 落地的字节端节点；单一事实源，S15）。
 pub const CONSOLE_PATH: &str = "/devices/console";
 
+/// 焦点实例切换（ADR-048 T3，owner 裁决 α：SYS_STREAM_FOCUS_SET）。
+///
+/// **调用契约（S13 单点）**：仅 login 在认证成功后、**降权前**调用
+///（uid 0 + 特权能力集窗口）；会话内进程调用会被内核 EACCES 拒绝
+///（门禁在 syscall 层，audio attach 同款）。`instance` 越界 → EINVAL。
+///
+/// # 失败模式（S20）
+///
+/// - EACCES：无 CAP_SYSTEM（已降权的会话进程 / 非特权进程）——如实上抛，
+///   调用方（login）必须把它视为**装配失败**退出，绝不静默继续（焦点没
+///   切过去 = 会话收不到键盘，静默 = 假活会话）。
+/// - EINVAL：实例不存在（越界）——同上如实上抛。
+pub fn focus_set(instance: usize) -> Result<(), Error> {
+    crate::syscall::call(
+        crate::nr::SYS_STREAM_FOCUS_SET,
+        [instance as u64, 0, 0, 0, 0, 0],
+    )?;
+    Ok(())
+}
+
 /// `/devices/console` 的**写端**（阶段 3 consoled 的产出通道）。
 ///
 /// **职责边界（S13 单一语义）**：本类型只做「字节 → console 环」的交付；
