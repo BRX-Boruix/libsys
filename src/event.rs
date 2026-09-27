@@ -484,11 +484,25 @@ pub struct ConsoleWriter {
 }
 
 impl ConsoleWriter {
-    /// 打开 console 写端；失败如实上抛（S09，与 `EventSourceReader::open`
-    /// 同一纪律：缺节点 = 装配错误，不回退不静默）。
+    /// 打开 console 写端（实例 0 = 兼容别名 `/devices/console`）；失败如实
+    /// 上抛（S09，与 `EventSourceReader::open` 同一纪律：缺节点 = 装配错误，
+    /// 不回退不静默）。
     pub fn open() -> Result<Self, Error> {
+        Self::open_instance(0)
+    }
+
+    /// 打开**指定实例**的 console 写端（ADR-048 决策 4：一实例一守护——
+    /// consoled argv 传实例 id，写端 open `/devices/consoles/<id>`）。
+    /// 实例 0 经兼容别名（`CONSOLE_PATH`）与既有路径字节级一致（T1 别名
+    /// 是同一 Arc，S13 单一事实源）。
+    pub fn open_instance(instance: usize) -> Result<Self, Error> {
+        let path: alloc::string::String = if instance == 0 {
+            alloc::borrow::ToOwned::to_owned(CONSOLE_PATH)
+        } else {
+            alloc::format!("/devices/consoles/{}", instance)
+        };
         let fd = crate::io::open(
-            CONSOLE_PATH,
+            &path,
             crate::io::OpenFlags::WRITE_ONLY,
             // 权限参数是**创建**用模板（A1-1：wire 只传 mode）；本节点已由
             // 内核 0777 铸好，此处 readonly/write_only 皆不影响打开结果。

@@ -696,6 +696,116 @@ mod tests {
         assert_eq!(buf[0].state, 0, "未知状态必须置 0，不得默认 Ready");
         assert_eq!(buf[0].ppid, 1);
     }
+
+    // ---- pid_of_name（init consoled 看门狗的查找真值，I-EVENTS #6）----
+    // （ADR-048 T4 修复：这组测试原被误置于 tree_tests——那里没有 wrap/entry
+    // 辅助函数，宿主测试自 24dc8db 起从未真正编译通过，验收漏检。搬回
+    // 定义它们的 mod tests。）
+
+    #[test]
+    fn test_pid_of_name_finds_exact_match() {
+        let text = wrap(&[
+            entry(1, "init", "Running", 0),
+            entry(5, "consoled", "Blocked", 1),
+            entry(7, "login", "Blocked", 1),
+        ]);
+        assert_eq!(pid_of_name(&text, "consoled"), Some(5));
+        assert_eq!(pid_of_name(&text, "init"), Some(1));
+    }
+
+    #[test]
+    fn test_pid_of_name_rejects_substring_and_missing() {
+        let text = wrap(&[
+            entry(9, "consoled-e2e", "Blocked", 1),
+            entry(4, "consoled-demo", "Blocked", 1),
+        ]);
+        // 子串不得误命中（S13 精确匹配）："consoled" ≠ "consoled-e2e"。
+        assert_eq!(pid_of_name(&text, "consoled"), None);
+        assert_eq!(pid_of_name(&text, "consoled-e2e"), Some(9));
+        // 缺席的名字与畸形输入如实返回 None（不伪造）。
+        assert_eq!(pid_of_name(&text, "nope"), None);
+        assert_eq!(pid_of_name("not json", "x"), None);
+        assert_eq!(pid_of_name("", "x"), None);
+    }
+
+    #[test]
+    fn test_pid_of_name_first_hit_wins_and_skips_pid_zero() {
+        // 同名多实例：返回第一个（内核表序）。pid=0 的记录（非法）被跳过。
+        let text = wrap(&[
+            entry(0, "consoled", "Ready", 1),
+            entry(12, "consoled", "Blocked", 1),
+            entry(13, "consoled", "Blocked", 1),
+        ]);
+        assert_eq!(pid_of_name(&text, "consoled"), Some(12));
+    }
+
+    // ---- pid_of_name_alive（ADR-048 T4：守护账本按 (实例,pid) 巡检）----
+
+    #[test]
+    fn test_pid_of_name_alive_requires_both_name_and_pid() {
+        let text = wrap(&[
+            entry(5, "consoled.elf", "Blocked", 1),
+            entry(6, "consoled.elf", "Blocked", 1),
+        ]);
+        // 名与 pid **同时**命中才算活：同名的其他实例不算（S13）。
+        assert!(pid_of_name_alive(&text, "consoled.elf", 5));
+        assert!(pid_of_name_alive(&text, "consoled.elf", 6));
+        assert!(!pid_of_name_alive(&text, "consoled.elf", 7));
+        // 名不对的 pid 也不算（防「pid 撞号、名字变了」的假活）。
+        assert!(!pid_of_name_alive(&text, "login.elf", 5));
+    }
+
+    #[test]
+    fn test_pid_of_name_alive_malformed_is_dead() {
+        // 畸形输入 = 无法证明存活 = 判死（S17 安全侧：看门狗会 respawn，
+        // 宁可多拉一次守护也不能让死守护骗过巡检）。
+        assert!(!pid_of_name_alive("not json", "x", 1));
+        assert!(!pid_of_name_alive("", "x", 1));
+    }
+}
+
+/// 「名为 `name` 且 pid 等于 `want` 的进程**仍在**」——看门狗的存活判定
+/// （ADR-048 决策 4：守护账本按 (实例, pid) 巡检；同名的**其他**实例不算数，
+/// S13 精确匹配：pid 是进程的身份证，name 只是可读标签）。
+/// 畸形输入 = 无法证明存活 = 判死（S17 安全侧：宁可多 respawn 一次，
+/// 也绝不让死守护骗过巡检——误 respawn 的代价可控，漏检的代价是终端
+/// 永久无声）。
+pub fn pid_of_name_alive(text: &str, name: &str, want: u64) -> bool {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('[') {
+        return false;
+    }
+    let value = match crate::json::JsonParser::new(trimmed).parse() {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let items = match value {
+        crate::json::JsonValue::Array(items) => items,
+        _ => return false,
+    };
+    for item in items {
+        let fields = match item {
+            crate::json::JsonValue::Object(fields) => fields,
+            _ => continue,
+        };
+        let mut pid: Option<u32> = None;
+        let mut matched = false;
+        for (key, val) in &fields {
+            match key.as_str() {
+                "pid" => pid = json_u32(val),
+                "name" => {
+                    if let crate::json::JsonValue::String(s) = val {
+                        matched = s.as_str() == name;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if matched && pid == Some(want as u32) {
+            return true;
+        }
+    }
+    false
 }
 
 // ===========================================================================
@@ -882,44 +992,5 @@ mod tree_tests {
         // 低位便于将来在同一个 `a5` 里再叠别的标志（如 O_NDELAY 语义扩展），
         // 而不必挪动既有位。若改成非最低位，本断言会强制复核这一决定。
         assert_eq!(crate::nr::STREAM_READ_NONBLOCK & 1, 1, "应为最低位");
-    }
-
-    // ---- pid_of_name（init consoled 看门狗的查找真值，I-EVENTS #6）----
-
-    #[test]
-    fn test_pid_of_name_finds_exact_match() {
-        let text = wrap(&[
-            entry(1, "init", "Running", 0),
-            entry(5, "consoled", "Blocked", 1),
-            entry(7, "login", "Blocked", 1),
-        ]);
-        assert_eq!(pid_of_name(&text, "consoled"), Some(5));
-        assert_eq!(pid_of_name(&text, "init"), Some(1));
-    }
-
-    #[test]
-    fn test_pid_of_name_rejects_substring_and_missing() {
-        let text = wrap(&[
-            entry(9, "consoled-e2e", "Blocked", 1),
-            entry(4, "consoled-demo", "Blocked", 1),
-        ]);
-        // 子串不得误命中（S13 精确匹配）："consoled" ≠ "consoled-e2e"。
-        assert_eq!(pid_of_name(&text, "consoled"), None);
-        assert_eq!(pid_of_name(&text, "consoled-e2e"), Some(9));
-        // 缺席的名字与畸形输入如实返回 None（不伪造）。
-        assert_eq!(pid_of_name(&text, "nope"), None);
-        assert_eq!(pid_of_name("not json", "x"), None);
-        assert_eq!(pid_of_name("", "x"), None);
-    }
-
-    #[test]
-    fn test_pid_of_name_first_hit_wins_and_skips_pid_zero() {
-        // 同名多实例：返回第一个（内核表序）。pid=0 的记录（非法）被跳过。
-        let text = wrap(&[
-            entry(0, "consoled", "Ready", 1),
-            entry(12, "consoled", "Blocked", 1),
-            entry(13, "consoled", "Blocked", 1),
-        ]);
-        assert_eq!(pid_of_name(&text, "consoled"), Some(12));
     }
 }
