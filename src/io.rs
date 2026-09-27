@@ -470,6 +470,34 @@ pub fn read_nonblocking(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
     .map(|n| n as usize)
 }
 
+/// `read_nonblocking_take(fd, buf)`：**消费式**非阻塞读——取走字节且不阻塞。
+///
+/// # 与 [`read_nonblocking`] 的唯一差别
+///
+/// 不带 [`crate::nr::STREAM_READ_PEEK`]：字节**被取走**（本读者游标推进），
+/// 而非预览。`nr.rs:76-82` 成文预留的「NONBLOCK 与 PEEK 语义可分离」的
+/// 消费臂——首个使用方是 consoled 的 getty 清积压（登录前按键作废）。
+///
+/// # 返回
+///
+/// * `Ok(n)`：取走 `n` 字节（可能短读）；
+/// * `Err(WouldBlock)`：此刻无可消费数据；
+/// * 其他 `Err`：如实上抛。
+pub fn read_nonblocking_take(fd: u64, buf: &mut [u8]) -> Result<usize, Error> {
+    crate::syscall::call(
+        SYS_STREAM_READ,
+        [
+            fd,
+            buf.as_mut_ptr() as u64,
+            buf.len() as u64,
+            STREAM_OFFSET_CURRENT,
+            crate::nr::STREAM_READ_NONBLOCK,
+            0,
+        ],
+    )
+    .map(|n| n as usize)
+}
+
 /// `write(fd, buf)`：把字节缓冲写到 fd（流式自增写），返回写入字节数。
 pub fn write(fd: u64, buf: &[u8]) -> Result<usize, Error> {
     crate::syscall::call(

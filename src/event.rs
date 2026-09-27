@@ -391,6 +391,13 @@ impl EventSourceReader {
         Ok(Self { fd, state: KeymapState::default(), buf: [0u8; EVENT_RECORD_SIZE * 8] })
     }
 
+    /// 底层事件节点 fd（只读访问器，S15 单点：字段私有，能力经方法暴露）。
+    /// 供非阻塞变体读（getty 清积压的 `read_nonblocking`）等调用方使用；
+    /// 不暴露 `&mut`，不改写 fd 所有权（close 仍走 [`Self::close`]）。
+    pub fn raw_fd(&self) -> u64 {
+        self.fd
+    }
+
     /// 阻塞读取一批事件，把转换出的字节追加到 `out`，返回**新增字节数**。
     ///
     /// **空读不会返回 0**：内核在无事件时登记等待者并挂起本进程
