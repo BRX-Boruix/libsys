@@ -83,6 +83,11 @@ unsafe impl GlobalAlloc for UserHeap {
                 break;
             }
         }
+        // S09 留证：panic 前在串口打一行归因信息（布局与次数），让
+        // 「buddy_system_allocator panic」能定位到分配规模与来源。
+        // 用 write syscall（栈字节切片，零堆分配——OOM 路径绝不能再
+        // 摸堆）。失败静默（无更外层通道，S09 到顶）。
+        oom_trace(layout);
         core::ptr::null_mut()
     }
 
@@ -126,5 +131,48 @@ fn grow_user_heap(heap: &mut Heap<32>, layout: &Layout) -> bool {
         true
     } else {
         false
+    }
+}
+
+/// OOM 归因行（S09）：`[libsys] heap OOM size=N align=N`——只在分配
+/// 器放弃时调用，全局计数防重复刷屏。零堆分配（栈缓冲 + write）。
+fn oom_trace(layout: Layout) {
+    use core::sync::atomic::{AtomicU8, Ordering};
+    static OOM_COUNT: AtomicU8 = AtomicU8::new(0);
+    if OOM_COUNT.fetch_add(1, Ordering::Relaxed) >= 8 {
+        return; // 前 8 次留证后静默——洪泛下不刷屏
+    }
+    let mut msg = [0u8; 64];
+    const PREFIX: &[u8] = b"[libsys] heap OOM size=0000000 align=00\n";
+    msg[..PREFIX.len()].copy_from_slice(PREFIX);
+    let size = layout.size();
+    let align = layout.align();
+    // 手写十进制（无堆无 format!）：size 最多 7 位、align 2 位槽
+    let mut sb = [0u8; 7];
+    let mut n = 0usize;
+    let mut v = size;
+    while v > 0 {
+        sb[n] = b'0' + (v % 10) as u8;
+        n += 1;
+        v /= 10;
+    }
+    // size 槽 [22..29)：右对齐——末位放 28，向左回退
+    for k in (0..n).rev() {
+        msg[22 + (6 - k)] = sb[k];
+    }
+    let mut ab = [0u8; 2];
+    let mut n2 = 0usize;
+    let mut v2 = align;
+    while v2 > 0 {
+        ab[n2] = b'0' + (v2 % 10) as u8;
+        n2 += 1;
+        v2 /= 10;
+    }
+    // align 槽 [36..38)：右对齐——末位放 37，向左回退
+    for k in (0..n2).rev() {
+        msg[36 + (1 - k)] = ab[k];
+    }
+    unsafe {
+        let _ = crate::io::write(1, &msg);
     }
 }
