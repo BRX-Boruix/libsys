@@ -26,6 +26,7 @@
 
 extern crate alloc;
 
+pub mod cmdline;
 pub mod error;
 // I-EVENTS 阶段 2（ADR-047）：事件→字节转换层（keymap 上移用户态，ADR-045 决策 3）。
 pub mod event;
@@ -55,6 +56,9 @@ mod thread;
 mod time;
 mod volume;
 
+// 入口参数块 mini-ABI 的用户态单点定义（docs/abi/syscall-abi.md §4）：
+// 整条命令行与拆词，不再由各程序各写一份。
+pub use cmdline::{MAX_CMDLINE_BYTES, Words, args, cmdline, split_words, words_into};
 pub use error::Error;
 pub use io::{
     DirEntry, GATE_SYSTEM_BIT, OpenFlags, Permissions, STDERR, STDIN, STDOUT, StatInfo, chdir,
