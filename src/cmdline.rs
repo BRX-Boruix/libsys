@@ -9,10 +9,12 @@
 
 /// 命令行字符串区的容量上限（字节，不含 NUL 终止符）。
 ///
-/// wire 镜像：内核侧为 loader::raw::STR_OFF - 1 = 0x1FF，契约见
-/// docs/abi/syscall-abi.md §4。超出的命令行在 exec 时即以 E2BIG 拒绝，
-/// 故用户态看到的串长必 ≤ 本值；此常量用作防御性扫描边界。
-pub const MAX_CMDLINE_BYTES: usize = 0x1FF;
+/// wire 镜像：内核侧为 loader 的 `MAX_CMDLINE_BYTES`（**单点定义**，3P4-2 起为 4096；
+/// 此前内核缓冲 4096 与 loader 字符串区 0x1FF 是两个门限，512..=4096 的命令行会被
+/// 内核放行、随后在 loader 被 E2BIG 拒绝）。契约见 docs/abi/syscall-abi.md §4。
+/// 超出的命令行在 exec 时即以 E2BIG 拒绝，故用户态看到的串长必 ≤ 本值；
+/// 此常量用作防御性扫描边界（用户态与内核分属两个仓，无法共享字面量，故以文档 + 测试互锚）。
+pub const MAX_CMDLINE_BYTES: usize = 4096;
 
 /// 词分隔符：空格与制表符（内核不定义分隔符语义，此处是用户态约定）。
 #[inline]
