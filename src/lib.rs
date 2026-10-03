@@ -29,6 +29,8 @@ extern crate alloc;
 pub mod cmdline;
 // 3P4-2（ABI v2）：入口参数块在 argv 之后携带 envp；定位与遍历的用户态单点定义。
 pub mod env;
+// 3P4-2（ABI v2）：envp 之后追加 auxv 对（当前交付 AT_EXECFN = 可执行文件名）。
+pub mod auxv;
 pub mod error;
 // I-EVENTS 阶段 2（ADR-047）：事件→字节转换层（keymap 上移用户态，ADR-045 决策 3）。
 pub mod event;
@@ -62,6 +64,7 @@ mod volume;
 // 整条命令行与拆词，不再由各程序各写一份。
 pub use cmdline::{MAX_CMDLINE_BYTES, Words, args, cmdline, split_words, words_into};
 pub use env::{Env, MAX_ENV_COUNT, env, envp, var};
+pub use auxv::{AT_EXECFN, AT_NULL, MAX_AUXV_PAIRS, auxv, execfn};
 pub use error::Error;
 pub use io::{
     DirEntry, GATE_SYSTEM_BIT, OpenFlags, Permissions, STDERR, STDIN, STDOUT, StatInfo, chdir,
