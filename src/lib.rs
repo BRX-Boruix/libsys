@@ -82,7 +82,9 @@ pub use io::{
     ACE_PRINCIPAL_NAMED_GID, ACE_PRINCIPAL_NAMED_UID, ACE_PRINCIPAL_OTHER, ACE_PRINCIPAL_OWNER,
     ACE_WIRE_MAX, ACE_WIRE_SIZE,
 };
-pub use mem::{brk, mmap, munmap};
+pub use mem::{
+    brk, mmap, mmap_prot, munmap, PROT_DEFAULT, PROT_EXEC, PROT_READ, PROT_WRITE,
+};
 pub use pipe::{pipe_create, pipe_create_cloexec};
 pub use power::{power_off, reboot};
 pub use process::{

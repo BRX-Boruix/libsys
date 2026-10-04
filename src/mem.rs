@@ -3,9 +3,24 @@
 use crate::error::Error;
 use crate::nr::{MEM_MAP_SHARED, SYS_MEMORY_GROW, SYS_MEMORY_MAP, SYS_MEMORY_UNMAP};
 
-/// `mmap(size)`：预留一段按需分页区，返回起始地址。
+/// mmap 的 prot 位（3P4-4）。**与内核 mm::user_space 的编号同一事实**（两侧互指）。
+pub const PROT_READ: u64 = 1 << 0;
+pub const PROT_WRITE: u64 = 1 << 1;
+pub const PROT_EXEC: u64 = 1 << 2;
+/// prot == 0 的历史语义 = RW（早期 wire 未用该参数）。
+pub const PROT_DEFAULT: u64 = PROT_READ | PROT_WRITE;
+
+/// `mmap(size)`：预留一段按需分页区（默认权限 RW），返回起始地址。
 pub fn mmap(size: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_MEMORY_MAP, [size, 0, 0, 0, 0, 0])
+}
+
+/// `mmap_prot(size, prot)`：带权限的匿名映射（3P4-4）。
+///
+/// W^X 由内核**单点**拒绝（写+执行同页 → InvalidParam）；本层不预检——让拒绝来自权威处，
+/// 避免策略在两处漂移（S13）。
+pub fn mmap_prot(size: u64, prot: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_MEMORY_MAP, [size, 0, 0, prot, 0, 0])
 }
 
 /// `shm_map(id, size) -> vaddr`：把既有共享内存对象映射进本进程（ADR-014
