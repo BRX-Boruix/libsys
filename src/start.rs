@@ -34,11 +34,16 @@ extern "C" fn __libsys_exit(code: u64) -> ! {
     crate::process::exit(code as i32);
 }
 
-#[cfg(all(not(test), target_os = "none"))]
+#[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 global_asm!(
     r#"
 .section .text
-.global _start
+// **弱符号**（3P1-2）：C 程序经 sysroot 链接 `crt0.o`，它提供同名 `_start`（强定义）
+// 调用 `main`。此处若为强定义，两者会在 `libc.a`（经 libsys）与 `crt0.o` 之间
+// 报 duplicate symbol（实测）。弱定义让强定义胜出；而 Rust 程序无竞争者时，
+// 链接器仍会为入口符号从归档中取出本对象。`.weak` 已含全局可见性，
+// 不可再写 `.global _start`（实测：会把它改回 STB_GLOBAL 并报错）。
+.weak _start
 .type _start, @function
 _start:
     xor rbp, rbp            # 标记栈帧底部（回溯终止）

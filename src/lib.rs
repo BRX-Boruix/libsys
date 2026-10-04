@@ -39,9 +39,13 @@ pub mod nr;
 pub mod signal;
 pub mod syscall;
 
-#[cfg(all(not(test), target_os = "none"))]
+// 裸机用户态门禁：**两个目标名都算**——内建目标 `x86_64-unknown-none`（os="none"）与
+// BORUIX 自己的目标定义 `sdk/boruix.json`（os="boruix"，3P1-4）。二者是同一个运行环境，
+// 差别只在目标描述文件；只认 "none" 会让新目标下 allocator/builtins/panic_handler/_start
+// 全部消失（实测：新目标下 Rust 程序无入口）。
+#[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 mod allocator;
-#[cfg(all(not(test), target_os = "none"))]
+#[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 mod builtins;
 
 mod io;
@@ -122,7 +126,7 @@ pub use driver::{
 use core::panic::PanicInfo;
 
 /// 用户态 panic 处理：打印提示并退出（code=101）。
-#[cfg(all(not(test), target_os = "none"))]
+#[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     let _ = write(1, b"\n[libsys] userspace panic: ");
