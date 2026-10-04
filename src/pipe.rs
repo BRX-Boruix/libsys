@@ -37,8 +37,13 @@ pub fn pipe_create() -> Result<(u64, u64), Error> {
         ],
     )?;
     // 成功时 bit63 恒 0（两 fd 均 < 2^32），故 packed 必然 < 2^63 = 非错误。
-    let read_fd = (packed >> 32) as u32 as u64;
-    let write_fd = (packed & 0xFFFF_FFFF) as u64;
+    // **打包契约（与内核同一事实，见 docs/abi/syscall-abi.md §4.1）**：
+    // 内核返回 `(read_fd) | (write_fd << 32)`——**读端在低 32 位**。
+    // 历史缺陷：本处曾把高位当读端（两端互换）。此前无碍，因为内核按 syscall
+    // 而非端别路由读写；3P4-3a 引入 EOF 语义后，端别**决定语义**（最后一个写端
+    // 关闭 → 读端见 EOF），互换即致命：实测子进程拿到的是写端，read 直接失败。
+    let read_fd = (packed & 0xFFFF_FFFF) as u64;
+    let write_fd = (packed >> 32) as u32 as u64;
     Ok((read_fd, write_fd))
 }
 
@@ -60,7 +65,12 @@ pub fn pipe_create_cloexec() -> Result<(u64, u64), Error> {
             0,
         ],
     )?;
-    let read_fd = (packed >> 32) as u32 as u64;
-    let write_fd = (packed & 0xFFFF_FFFF) as u64;
+    // **打包契约（与内核同一事实，见 docs/abi/syscall-abi.md §4.1）**：
+    // 内核返回 `(read_fd) | (write_fd << 32)`——**读端在低 32 位**。
+    // 历史缺陷：本处曾把高位当读端（两端互换）。此前无碍，因为内核按 syscall
+    // 而非端别路由读写；3P4-3a 引入 EOF 语义后，端别**决定语义**（最后一个写端
+    // 关闭 → 读端见 EOF），互换即致命：实测子进程拿到的是写端，read 直接失败。
+    let read_fd = (packed & 0xFFFF_FFFF) as u64;
+    let write_fd = (packed >> 32) as u32 as u64;
     Ok((read_fd, write_fd))
 }
