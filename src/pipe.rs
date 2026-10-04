@@ -41,3 +41,26 @@ pub fn pipe_create() -> Result<(u64, u64), Error> {
     let write_fd = (packed & 0xFFFF_FFFF) as u64;
     Ok((read_fd, write_fd))
 }
+
+/// pipe_create_cloexec() -> (read_fd, write_fd)：同 pipe_create，但两端都打
+/// **CLOEXEC**——exec 出的子进程**不继承**它们（3P4-3 的典型用法）。
+///
+/// 为什么需要它：父进程若把写端也交给子进程，子进程退出前管道永不 EOF——这正是
+/// "父关写端 → 子读 EOF"不成立的成因。
+pub fn pipe_create_cloexec() -> Result<(u64, u64), Error> {
+    let empty: [u8; 1] = [0];
+    let packed = crate::syscall::call(
+        SYS_STREAM_CREATE,
+        [
+            empty.as_ptr() as u64,
+            crate::io::OpenFlags::pipe_only_cloexec().to_bits() as u64,
+            0,
+            0,
+            0,
+            0,
+        ],
+    )?;
+    let read_fd = (packed >> 32) as u32 as u64;
+    let write_fd = (packed & 0xFFFF_FFFF) as u64;
+    Ok((read_fd, write_fd))
+}

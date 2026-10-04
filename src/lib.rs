@@ -83,7 +83,7 @@ pub use io::{
     ACE_WIRE_MAX, ACE_WIRE_SIZE,
 };
 pub use mem::{brk, mmap, munmap};
-pub use pipe::pipe_create;
+pub use pipe::{pipe_create, pipe_create_cloexec};
 pub use power::{power_off, reboot};
 pub use process::{
     PsEntry, WAIT_ANY, WaitResult, derive, derive_inherit, exec, exec_path, exit,

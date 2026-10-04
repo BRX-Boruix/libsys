@@ -75,6 +75,21 @@ impl OpenFlags {
         cloexec: false,
     };
 
+    /// FLAG_PIPE + FLAG_CLOEXEC：管道两端都**不被 exec 继承**（3P4-3 的典型用法——
+    /// 父进程只想自己持写端，否则 exec 出的子进程会持住写端使读端读不到 EOF）。
+    pub const fn pipe_only_cloexec() -> Self {
+        Self {
+            cloexec: true,
+            read: true,
+            write: true,
+            create: false,
+            truncate: false,
+            append: false,
+            directory: false,
+            pipe: true,
+        }
+    }
+
     /// FLAG_PIPE 便捷构造：与 `pipe_create()` 同语义（含 pipe 位、空路径）。
     /// 显式不读不写文件节点——内核在 FLAG_PIPE 分支忽略 read/write 位。
     pub const fn pipe_only() -> Self {
