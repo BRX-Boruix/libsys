@@ -83,7 +83,7 @@ pub use io::{
     ACE_WIRE_MAX, ACE_WIRE_SIZE,
 };
 pub use mem::{
-    brk, mmap, mmap_prot, munmap, PROT_DEFAULT, PROT_EXEC, PROT_READ, PROT_WRITE,
+    brk, mmap, mmap_prot, mprotect, munmap, PROT_DEFAULT, PROT_EXEC, PROT_READ, PROT_WRITE,
 };
 pub use pipe::{pipe_create, pipe_create_cloexec};
 pub use power::{power_off, reboot};

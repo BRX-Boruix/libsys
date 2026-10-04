@@ -126,6 +126,8 @@ pub const SYS_MEMORY_QUERY: u32 = nr(domain::MEMORY, op::READ); // 0x22
 /// `memory_grow(new_break) -> break`：调整进程堆边界（替代 brk）。
 pub const SYS_MEMORY_GROW: u32 = nr(domain::MEMORY, op::WRITE); // 0x23
 /// `memory_unmap(addr, size) -> 0`：解除虚存映射。
+/// mprotect(addr, len, prot)：修改已映射内存权限（MEMORY 域 0x05 / 号 0x25，3P4-5）。
+pub const SYS_MEMORY_PROTECT: u32 = nr(domain::MEMORY, 0x05); // 0x25
 pub const SYS_MEMORY_UNMAP: u32 = nr(domain::MEMORY, op::DELETE); // 0x24
 
 /// `memory_query` 位图：页表项 present（demand 区未触碰时整字为 0）。

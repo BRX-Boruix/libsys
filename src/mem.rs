@@ -1,7 +1,9 @@
 //! 内存（MEMORY 域）薄封装。
 
 use crate::error::Error;
-use crate::nr::{MEM_MAP_SHARED, SYS_MEMORY_GROW, SYS_MEMORY_MAP, SYS_MEMORY_UNMAP};
+use crate::nr::{
+    MEM_MAP_SHARED, SYS_MEMORY_GROW, SYS_MEMORY_MAP, SYS_MEMORY_PROTECT, SYS_MEMORY_UNMAP,
+};
 
 /// mmap 的 prot 位（3P4-4）。**与内核 mm::user_space 的编号同一事实**（两侧互指）。
 pub const PROT_READ: u64 = 1 << 0;
@@ -21,6 +23,15 @@ pub fn mmap(size: u64) -> Result<u64, Error> {
 /// 避免策略在两处漂移（S13）。
 pub fn mmap_prot(size: u64, prot: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_MEMORY_MAP, [size, 0, 0, prot, 0, 0])
+}
+
+/// `mprotect(addr, len, prot)`：修改已映射内存权限（MEMORY 域 0x25，3P4-5）。
+///
+/// W^X 由内核**单点**拒绝（写+执行同页 → InvalidParam），本层不预检（S13）。
+/// `prot == 0`（POSIX PROT_NONE）当前如实 NotSupported——抽象层没有「存在但不可访问」
+/// 的权限表示，内核拒绝而非假装成只读。
+pub fn mprotect(addr: u64, len: u64, prot: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_MEMORY_PROTECT, [addr, len, prot, 0, 0, 0]).map(|_| ())
 }
 
 /// `shm_map(id, size) -> vaddr`：把既有共享内存对象映射进本进程（ADR-014
