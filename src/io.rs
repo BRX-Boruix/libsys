@@ -22,6 +22,12 @@ pub struct OpenFlags {
     /// FLAG_PIPE（ADR-014 §4.1）：配合空路径，经 `SYS_STREAM_CREATE` 分配一对
     /// 匿名管道流句柄（`OpenFlags::pipe()` 便捷构造），而非打开文件节点。
     pub pipe: bool,
+    /// FLAG_CLOEXEC（3P4-3）：exec 派生新映像时**不继承**本 fd（POSIX `FD_CLOEXEC`）。
+    /// 位分配 = bit 7（内核侧同一事实见 `vfs::file_handle::OpenFlags`）。
+    ///
+    /// 典型用法：父进程为管道/内部用途打开的 fd 打上它，避免子进程意外持住写端，
+    /// 使"父进程关闭写端 → 读端读到 EOF"成立。
+    pub cloexec: bool,
 }
 
 impl OpenFlags {
@@ -33,6 +39,7 @@ impl OpenFlags {
         append: false,
         directory: false,
         pipe: false,
+        cloexec: false,
     };
 
     pub const WRITE_ONLY: Self = Self {
@@ -43,6 +50,7 @@ impl OpenFlags {
         append: false,
         directory: false,
         pipe: false,
+        cloexec: false,
     };
 
     pub const READ_WRITE: Self = Self {
@@ -53,6 +61,7 @@ impl OpenFlags {
         append: false,
         directory: false,
         pipe: false,
+        cloexec: false,
     };
 
     pub const CREATE_OR_TRUNCATE: Self = Self {
@@ -63,12 +72,14 @@ impl OpenFlags {
         append: false,
         directory: false,
         pipe: false,
+        cloexec: false,
     };
 
     /// FLAG_PIPE 便捷构造：与 `pipe_create()` 同语义（含 pipe 位、空路径）。
     /// 显式不读不写文件节点——内核在 FLAG_PIPE 分支忽略 read/write 位。
     pub const fn pipe_only() -> Self {
         Self {
+            cloexec: false,
             read: true,
             write: true,
             create: false,
@@ -101,6 +112,9 @@ impl OpenFlags {
         }
         if self.pipe {
             bits |= 1 << 6;
+        }
+        if self.cloexec {
+            bits |= 1 << 7;
         }
         bits
     }
