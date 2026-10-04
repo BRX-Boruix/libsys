@@ -108,6 +108,9 @@ pub const SYS_STREAM_FSTAT: u32 = nr(domain::STREAM, 0x07); // 0x17
 /// 前调用（tcsetpgrp 同构：机制内核、策略用户态）。非特权/越界如实
 /// EACCES/EINVAL。与内核 syscall.rs 双侧常量互指（PRE-12 纪律）。
 pub const SYS_STREAM_FOCUS_SET: u32 = nr(domain::STREAM, 0x08); // 0x18
+/// `ftruncate(fd, len)`：按 **fd** 截断/扩展到指定长度（STREAM 域 0x09 / 号 0x19，3P4-8）。
+/// fd 基（不是路径基）——C 侧 `ftruncate` 的语义；ext2 的 truncate 落盘实现已在。
+pub const SYS_STREAM_FTRUNCATE: u32 = nr(domain::STREAM, 0x09); // 0x19
 
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
@@ -228,6 +231,11 @@ pub const SYS_ENTRY_DELETE: u32 = nr(domain::VFS, op::DELETE); // 0x44
 pub const SYS_ENTRY_CHDIR: u32 = nr(domain::VFS, 0x05); // 0x45
 /// `entry_getcwd(buf_ptr, cap) -> len`：读当前进程工作目录到用户缓冲。
 pub const SYS_ENTRY_GETCWD: u32 = nr(domain::VFS, 0x06); // 0x46
+/// `symlink(target, link_path)`：创建软链接（VFS 域 0x07 / 号 0x47，3P4-8）。
+pub const SYS_ENTRY_SYMLINK: u32 = nr(domain::VFS, 0x07); // 0x47
+/// `readlink(path, buf, cap)`：读软链接目标（VFS 域 0x08 / 号 0x48，3P4-8）。
+/// 写入**不含**终止 NUL（POSIX 语义）；缓冲不足如实 NoSpace。
+pub const SYS_ENTRY_READLINK: u32 = nr(domain::VFS, 0x08); // 0x48
 
 /// SYS_ENTRY_READ 动作编码（a4 区分）：0 = 读取目录（默认）。
 pub const ENTRY_READ_READDIR: u64 = 0;

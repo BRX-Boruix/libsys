@@ -68,7 +68,8 @@ pub use auxv::{AT_EXECFN, AT_NULL, MAX_AUXV_PAIRS, auxv, execfn};
 pub use error::Error;
 pub use io::{
     DirEntry, GATE_SYSTEM_BIT, OpenFlags, Permissions, STDERR, STDIN, STDOUT, StatInfo, chdir,
-    chmod, chown, close, dup2, fstat, getcwd, mkdir, open, pread, pwrite, read, read_dir,
+    chmod, chown, close, dup2, fstat, ftruncate, getcwd, mkdir, open, pread, pwrite, read, read_dir,
+    readlink, symlink,
     // §6.12.5（裁决甲）：非阻塞读（探键用，不登记等待者）。
     read_nonblocking,
     // getty 清积压（consoled）：**消费式**非阻塞读（NONBLOCK 无 PEEK）。

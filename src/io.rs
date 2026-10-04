@@ -812,6 +812,61 @@ pub fn getcwd() -> Result<alloc::string::String, Error> {
     Ok(alloc::string::String::from(s))
 }
 
+/// `symlink(target, link_path)`：创建软链接（VFS 域 0x47，3P4-8）。
+///
+/// `target` 是**软链内容**（不解析、不要求存在）；`link_path` 是新建链接的路径。
+/// 相对路径相对当前 cwd 解析（内核 syscall 层拼接，VFS 只接受绝对路径）。
+pub fn symlink(target: &str, link_path: &str) -> Result<(), Error> {
+    // 两条路径都要 NUL 终止；两段式栈缓冲在这里不划算（两个变长输入），
+    // 故直接用堆（libsys 自有分配器，失败即如实上抛）。
+    let mut t = Vec::with_capacity(target.len() + 1);
+    t.extend_from_slice(target.as_bytes());
+    t.push(0);
+    let mut l = Vec::with_capacity(link_path.len() + 1);
+    l.extend_from_slice(link_path.as_bytes());
+    l.push(0);
+    crate::syscall::call(
+        SYS_ENTRY_SYMLINK,
+        [t.as_ptr() as u64, l.as_ptr() as u64, 0, 0, 0, 0],
+    )
+    .map(|_| ())
+}
+
+/// `readlink(path)`：读软链接目标（VFS 域 0x48，3P4-8）。
+///
+/// 返回目标字符串（**不含**终止 NUL，POSIX 语义）。路径不是软链接 → `InvalidParam`；
+/// 缓冲不足由内核如实 `NoSpace` 拒绝（绝不截断）。
+pub fn readlink(path: &str) -> Result<String, Error> {
+    let mut p = Vec::with_capacity(path.len() + 1);
+    p.extend_from_slice(path.as_bytes());
+    p.push(0);
+    let mut buf = [0u8; 256];
+    let n = crate::syscall::call(
+        SYS_ENTRY_READLINK,
+        [
+            p.as_ptr() as u64,
+            buf.as_mut_ptr() as u64,
+            buf.len() as u64,
+            0,
+            0,
+            0,
+        ],
+    )? as usize;
+    // 信任但验证：内核保证 n <= cap，宿主测试里 syscall 返回垃圾值，故必须钳。
+    if n > buf.len() {
+        return Err(Error::OutOfRange);
+    }
+    let s = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
+    Ok(String::from(s))
+}
+
+/// `ftruncate(fd, len)`：按 fd 截断/扩展到 `len`（STREAM 域 0x19，3P4-8）。
+///
+/// 与路径基 `truncate` 的区别只在"怎么找到节点"：这里用 fd 对应的句柄。
+pub fn ftruncate(fd: u64, len: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_STREAM_FTRUNCATE, [fd, len, 0, 0, 0, 0]).map(|_| ())
+}
+
 /// 高阶便捷函数：读取文件全部内容到 `Vec<u8>`。
 pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
     let fd = open(path, OpenFlags::READ_ONLY, Permissions::readonly())?;
