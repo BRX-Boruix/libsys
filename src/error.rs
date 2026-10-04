@@ -22,6 +22,8 @@ pub enum Error {
     NotSupported,
     /// 非阻塞操作无法立即完成。
     WouldBlock,
+    /// 阻塞中的系统调用被信号打断（EINTR，ADR-051）。
+    Interrupted,
     /// 空间不足。
     NoSpace,
     /// 设备 I/O 错误。
@@ -71,6 +73,7 @@ impl Error {
             Error::AlreadyExists => 17, // EEXIST
             Error::NotSupported => 95,  // ENOTSUP
             Error::WouldBlock => 11,    // EAGAIN
+        Error::Interrupted => 4,    // EINTR（ADR-051）
             Error::NoSpace => 28,       // ENOSPC
             Error::Io => 5,             // EIO
             Error::NotDirectory => 20,  // ENOTDIR
@@ -100,6 +103,7 @@ impl Error {
             17 => Error::AlreadyExists, // EEXIST
             95 => Error::NotSupported,  // ENOTSUP
             11 => Error::WouldBlock,    // EAGAIN
+        4 => Error::Interrupted,    // EINTR
             28 => Error::NoSpace,       // ENOSPC
             5 => Error::Io,             // EIO
             20 => Error::NotDirectory,  // ENOTDIR
@@ -130,6 +134,7 @@ impl fmt::Display for Error {
             Error::AlreadyExists => f.write_str("already exists"),
             Error::NotSupported => f.write_str("not supported"),
             Error::WouldBlock => f.write_str("would block"),
+        Error::Interrupted => f.write_str("interrupted"),
             Error::NoSpace => f.write_str("no space"),
             Error::Io => f.write_str("i/o error"),
             Error::NotDirectory => f.write_str("not a directory"),
