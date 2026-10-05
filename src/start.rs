@@ -20,21 +20,31 @@
 //! **拆词是用户程序的职责**：需要多参数的程序自行按空白切分 `argv[0]`
 //! （参照 `cowsay` 的 `split_args`、`userdrv` 的 `parse_argv`）。
 
+#[cfg(feature = "crt")]
 use core::arch::global_asm;
 
 // 用户程序提供的入口函数（每个用户程序必须导出该符号）。
 // 返回 `i32` 作为进程退出码。
+//
+// **feature `crt` 门禁**：`.so` 是库，不该带进程入口——而这里的引用会在 `.so` 里留下
+// `UND user_main`（实测：rtld 的急切符号解析因此失败）。
+#[cfg(feature = "crt")]
 unsafe extern "C" {
     fn user_main(argc: isize, argv: *const *const u8) -> i32;
 }
 
 /// 供 `_start` 汇编调用的 exit 桥接（`call` 后不返回）。
+#[cfg(feature = "crt")]
 #[unsafe(no_mangle)]
 extern "C" fn __libsys_exit(code: u64) -> ! {
     crate::process::exit(code as i32);
 }
 
-#[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
+#[cfg(all(
+    feature = "crt",
+    not(test),
+    any(target_os = "none", target_os = "boruix")
+))]
 global_asm!(
     r#"
 .section .text

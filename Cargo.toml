@@ -3,5 +3,14 @@ name = "libsys"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# `crt`（默认开）：提供用户程序入口 `_start` 与它的 exit 桥接。
+#
+# 为什么需要关掉它（阶段 5 / 3P5-2）：`.so` 是**库**，不该带进程入口——而 `_start` 会引用
+# `user_main`，在 `.so` 里留下一个 `UND user_main`，使 rtld 的急切符号解析失败（实测）。
+# 静态可执行文件路径保持默认开，行为不变。
+default = ["crt"]
+crt = []
+
 [dependencies]
 buddy_system_allocator = "0.9"
