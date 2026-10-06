@@ -124,24 +124,60 @@ pub fn heap_diag_on() -> bool {
 
 const DIAG_HEX: &[u8; 16] = b"0123456789abcdef";
 
+/// 本进程 pid 缓存（诊断行必须带 pid：串口日志是**多进程交织**的，
+/// 不带 pid 会把「不同进程各自的第一段」误读成「同一进程重复」——实测踩过）。
+static DIAG_PID: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+fn diag_pid() -> u64 {
+    let p = DIAG_PID.load(Ordering::Relaxed);
+    if p != 0 {
+        return p;
+    }
+    let p = crate::getpid().unwrap_or(0);
+    DIAG_PID.store(p, Ordering::Relaxed);
+    p
+}
+
 fn diag_brk(tag: u8, a: u64, b: u64) {
     if !DIAG_ON.load(Ordering::Relaxed) {
         return;
     }
-    let mut buf = [0u8; 40];
+    let mut buf = [0u8; 56];
     buf[0] = b'[';
     buf[1] = tag;
-    buf[2] = b']';
-    buf[3] = b' ';
-    for i in 0..16usize {
-        buf[4 + i] = DIAG_HEX[((a >> (60 - i * 4)) & 0xf) as usize];
+    buf[2] = b'/';
+    let pid = diag_pid();
+    // pid 十进制（本系统 pid 很小，3 位足够；超出则截断为 ?）
+    let mut tmp = [0u8; 20];
+    let mut n = 0usize;
+    let mut v = pid;
+    if v == 0 {
+        tmp[0] = b'0';
+        n = 1;
     }
-    buf[20] = b' ';
-    for i in 0..16usize {
-        buf[21 + i] = DIAG_HEX[((b >> (60 - i * 4)) & 0xf) as usize];
+    while v > 0 && n < tmp.len() {
+        tmp[n] = b'0' + (v % 10) as u8;
+        n += 1;
+        v /= 10;
     }
-    buf[37] = b'\n';
-    let _ = crate::io::write(1, &buf[..38]);
+    if n > 4 {
+        n = 4;
+    }
+    for k in 0..n {
+        buf[3 + k] = tmp[n - 1 - k];
+    }
+    buf[3 + n] = b']';
+    buf[4 + n] = b' ';
+    let base = 5 + n;
+    for i in 0..16usize {
+        buf[base + i] = DIAG_HEX[((a >> (60 - i * 4)) & 0xf) as usize];
+    }
+    buf[base + 16] = b' ';
+    for i in 0..16usize {
+        buf[base + 17 + i] = DIAG_HEX[((b >> (60 - i * 4)) & 0xf) as usize];
+    }
+    buf[base + 33] = b'\n';
+    let _ = crate::io::write(1, &buf[..base + 34]);
 }
 // ===== /TEMP-DIAG =====
 
