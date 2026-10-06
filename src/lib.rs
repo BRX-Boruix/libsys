@@ -46,6 +46,12 @@ pub mod syscall;
 #[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 mod allocator;
 // 堆增长诊断开关（定位「两个分配器共用 brk」类问题的常驻工具，默认关闭）。
+//
+// **门禁必须与 `mod allocator` 完全一致**：此前这一行漏了 cfg，于是 host 上
+// `cargo test`（shell 等用户态 crate 的宿主单测）会在 `pub use allocator::…`
+// 处报 E0432 —— 测试构建被一行漏掉的 cfg 整个挡住（实测：`shell` 的宿主单测
+// 因此从未能编译）。宿主测试里没有裸机堆，本开关如实缺席即可。
+#[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 pub use allocator::{heap_diag, heap_diag_on};
 #[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 mod builtins;
