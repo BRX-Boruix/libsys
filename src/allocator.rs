@@ -102,6 +102,49 @@ static USER_HEAP_ALLOCATOR: UserHeap = UserHeap {
     inner: SimpleMutex::new(Heap::empty()),
 };
 
+// ===== TEMP-DIAG（本轮临时观测点，定位后必须删除）=====
+// 目的：交替探针下，libsys 的 buddy 与 libc 的 malloc 都在推进 brk。
+// 两边各打一行 (tag, cur_brk, new_brk)，用来判断区间是否真的相交。
+// 零堆分配：栈缓冲 + write（与 oom_trace 同一手法）。
+/// 诊断开关：**默认关闭**，由 `libc` 的 `boruix_heap_diag(1)` 打开。
+///
+/// 为什么不无条件打印：这两个 crate 的分配路径是**所有程序**的地基，无条件输出会污染
+/// 每个程序的串口。诊断设施必须默认静默、可显式开启（本文件与 libc/malloc.rs 各有一份）。
+static DIAG_ON: AtomicBool = AtomicBool::new(false);
+
+/// 开关堆增长诊断（C 侧入口见 `libc` 的 `boruix_heap_diag`）。
+pub fn heap_diag(on: bool) {
+    DIAG_ON.store(on, Ordering::Relaxed);
+}
+
+/// 诊断是否已开启（供 libc 侧同开关使用）。
+pub fn heap_diag_on() -> bool {
+    DIAG_ON.load(Ordering::Relaxed)
+}
+
+const DIAG_HEX: &[u8; 16] = b"0123456789abcdef";
+
+fn diag_brk(tag: u8, a: u64, b: u64) {
+    if !DIAG_ON.load(Ordering::Relaxed) {
+        return;
+    }
+    let mut buf = [0u8; 40];
+    buf[0] = b'[';
+    buf[1] = tag;
+    buf[2] = b']';
+    buf[3] = b' ';
+    for i in 0..16usize {
+        buf[4 + i] = DIAG_HEX[((a >> (60 - i * 4)) & 0xf) as usize];
+    }
+    buf[20] = b' ';
+    for i in 0..16usize {
+        buf[21 + i] = DIAG_HEX[((b >> (60 - i * 4)) & 0xf) as usize];
+    }
+    buf[37] = b'\n';
+    let _ = crate::io::write(1, &buf[..38]);
+}
+// ===== /TEMP-DIAG =====
+
 /// 堆增长：向内核调用 `brk` 扩展虚拟堆空间并加入 buddy 堆。
 fn grow_user_heap(heap: &mut Heap<32>, layout: &Layout) -> bool {
     let Ok(cur_brk) = crate::mem::brk(0) else {
@@ -124,6 +167,7 @@ fn grow_user_heap(heap: &mut Heap<32>, layout: &Layout) -> bool {
     // buddy_system_allocator 要求 start 对齐到至少 32 字节且大小大于 0
     let start = cur_brk as usize;
     let end = new_brk as usize;
+    diag_brk(b'L', cur_brk, new_brk); // TEMP-DIAG
     if actual_grow >= 32 {
         unsafe {
             heap.add_to_heap(start, end);

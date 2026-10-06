@@ -45,6 +45,8 @@ pub mod syscall;
 // 全部消失（实测：新目标下 Rust 程序无入口）。
 #[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 mod allocator;
+// 堆增长诊断开关（定位「两个分配器共用 brk」类问题的常驻工具，默认关闭）。
+pub use allocator::{heap_diag, heap_diag_on};
 #[cfg(all(not(test), any(target_os = "none", target_os = "boruix")))]
 mod builtins;
 
