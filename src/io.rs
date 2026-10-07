@@ -28,6 +28,15 @@ pub struct OpenFlags {
     /// 典型用法：父进程为管道/内部用途打开的 fd 打上它，避免子进程意外持住写端，
     /// 使"父进程关闭写端 → 读端读到 EOF"成立。
     pub cloexec: bool,
+    /// FLAG_EXCL（O_EXCL）：**独占创建**——`create` 与 `exclusive` 同时置位时，
+    /// 若路径**已存在**则 open 失败（`AlreadyExists`），绝不打开已有文件。
+    /// 位分配 = bit 8（内核侧同一事实见 `vfs::file_handle::OpenFlags`）。
+    ///
+    /// 为什么必须有它（不是锦上添花）：没有独占位，`mkstemp`/`mkdtemp`/`tmpfile`
+    /// 只能「先 stat 再 create」两步走，两步之间存在 TOCTOU 窗口——两个进程可同时
+    /// 判定「不存在」，然后一个覆盖另一个刚建的文件，临时文件互相踩踏。POSIX 的
+    /// 原子性保证正是 `O_EXCL` 提供的，用户态无法自行补出。
+    pub exclusive: bool,
 }
 
 impl OpenFlags {
@@ -40,6 +49,7 @@ impl OpenFlags {
         directory: false,
         pipe: false,
         cloexec: false,
+        exclusive: false,
     };
 
     pub const WRITE_ONLY: Self = Self {
@@ -51,6 +61,7 @@ impl OpenFlags {
         directory: false,
         pipe: false,
         cloexec: false,
+        exclusive: false,
     };
 
     pub const READ_WRITE: Self = Self {
@@ -62,6 +73,7 @@ impl OpenFlags {
         directory: false,
         pipe: false,
         cloexec: false,
+        exclusive: false,
     };
 
     pub const CREATE_OR_TRUNCATE: Self = Self {
@@ -73,6 +85,7 @@ impl OpenFlags {
         directory: false,
         pipe: false,
         cloexec: false,
+        exclusive: false,
     };
 
     /// FLAG_PIPE + FLAG_CLOEXEC：管道两端都**不被 exec 继承**（3P4-3 的典型用法——
@@ -87,6 +100,7 @@ impl OpenFlags {
             append: false,
             directory: false,
             pipe: true,
+            exclusive: false,
         }
     }
 
@@ -102,6 +116,7 @@ impl OpenFlags {
             append: false,
             directory: false,
             pipe: true,
+            exclusive: false,
         }
     }
 
@@ -130,6 +145,9 @@ impl OpenFlags {
         }
         if self.cloexec {
             bits |= 1 << 7;
+        }
+        if self.exclusive {
+            bits |= 1 << 8;
         }
         bits
     }
