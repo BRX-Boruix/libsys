@@ -988,6 +988,42 @@ pub fn parse_dir_entries(text: &str) -> Result<Vec<DirEntry>, Error> {
     Ok(entries)
 }
 
+/// 内核 readdir 单次能交付的**上限**（与内核 `MAX_READDIR_OUT_BYTES` 同值，
+/// 见 `kernel/crates/kernel/src/syscall.rs` 的 `sys_readdir`）：传更大值内核报 EINVAL。
+const READDIR_MAX_BYTES: usize = 1024 * 1024;
+/// 起始缓冲：小目录一次就够。
+const READDIR_MIN_BYTES: usize = 2048;
+
+/// 读一个目录的**全部**条目。
+///
+/// # 为什么必须「按需放大重试」（2026-10 实测缺陷，S09 不静默少给）
+///
+/// 内核 readdir 是**成文的分页语义**：放不下整条时尾部整体省略，「返回字节数 <
+/// 完整列表长度」表示还有剩余条目；但 `SYS_ENTRY_READ` 的 readdir 动作**没有
+/// 游标/偏移参数**，调用方**取不到下一页**。
+///
+/// 此前这里用**固定 2048 字节**缓冲且**只调一次** ⇒ 目录大到装不下时**静默少列**。
+/// 机内最小复现（`tools/diskfiles/3p/mkfiles.c` + `dircount.c`）：一个目录里造 120
+/// 个文件，`opendir`/`readdir` 只数到 **52** 条，而调用方无法区分「目录就这么大」
+/// 与「被截断了」——那是最坏的一类错误：**数据看着正常，但少了**。
+///
+/// 修法：**放大到不再增长为止**。缓冲从 2048 起翻倍重试：
+///
+/// - 返回量随缓冲翻倍而**增长** ⇒ 之前那次被截断了，继续放大；
+/// - 某次翻倍后**不再增长** ⇒ 已取全，可以交付；
+/// - 触到内核上限（1 MiB）仍在增长 ⇒ 单次调用交付不了，**如实报 `OutOfRange`
+///   （ERANGE）**——`getcwd`/`readlink` 对「结果装不下」用的就是它。
+///   **绝不返回一份少列的清单。**
+///
+/// **为什么不能只看「返回量 < 缓冲长度」**（我第一版就踩了这个坑，机内实测仍列 52 条）：
+/// 内核**截断时返回的是"实际写入量"而不是"还有剩余"的信号**——`sys_readdir` 的循环
+/// 条件是 `written + add + 1 > max_bytes` 就 `break`，最后 `pack_ok(n)`，而 `n` 是
+/// 截断后的真实长度（通常略小于 `max_bytes`）。⇒ 单次返回值**根本无法区分**
+/// 「目录就这么大」与「被截断了」，必须靠**增长**这个可观测事实来判。
+///
+/// **「不再增长 ⇒ 完整」的依据（可复核）**：文件名 ≤ 255 字节 ⇒ 单条 JSON ≤ 约 300 字节；
+/// 而每次翻倍至少多出 `cap/2` 字节空间（cap ≥ 2048）⇒ 只要还有条目未列出，
+/// 就**一定**至少多装下一条 ⇒ 返回量必然增长。
 pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     let mut null_terminated = [0u8; 256];
     if path.len() >= 255 {
@@ -996,21 +1032,35 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Error> {
     null_terminated[..path.len()].copy_from_slice(path.as_bytes());
     null_terminated[path.len()] = 0;
 
-    let mut buf = [0u8; 2048];
-    let n = crate::syscall::call(
-        SYS_ENTRY_READ,
-        [
-            null_terminated.as_ptr() as u64,
-            buf.as_mut_ptr() as u64,
-            buf.len() as u64,
-            0,
-            0,
-            0,
-        ],
-    )? as usize;
-
-    let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
-    parse_dir_entries(text)
+    let mut cap = READDIR_MIN_BYTES;
+    let mut prev = usize::MAX; // 首轮没有「上一轮」可比
+    loop {
+        let mut buf = alloc::vec![0u8; cap];
+        let n = crate::syscall::call(
+            SYS_ENTRY_READ,
+            [
+                null_terminated.as_ptr() as u64,
+                buf.as_mut_ptr() as u64,
+                cap as u64,
+                0,
+                0,
+                0,
+            ],
+        )? as usize;
+        // 防御：内核返回越界时不 panic（理由同 `clamp_read_n`）。
+        let n = clamp_read_n(n, cap);
+        if n == prev {
+            // 翻倍后返回量不再增长 ⇒ 已取全。
+            let text = core::str::from_utf8(&buf[..n]).map_err(|_| Error::InvalidParam)?;
+            return parse_dir_entries(text);
+        }
+        if cap >= READDIR_MAX_BYTES {
+            // 触顶仍在增长：单次调用交付不了 ⇒ 如实拒绝，绝不静默少列。
+            return Err(Error::OutOfRange);
+        }
+        prev = n;
+        cap = core::cmp::min(cap * 2, READDIR_MAX_BYTES);
+    }
 }
 
 /// 把 `read` 返回的字节数钳到缓冲区长度内（§6.5 的修复点）。
