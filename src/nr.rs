@@ -117,6 +117,15 @@ pub const SYS_STREAM_FTRUNCATE: u32 = nr(domain::STREAM, 0x09); // 0x19
 /// TASK 无关、STREAM 域扩展动词 0x0A。双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_FSYNC` 同值、注释互指。
 pub const SYS_STREAM_FSYNC: u32 = nr(domain::STREAM, 0x0A); // 0x1A
 
+/// `SYS_STREAM_FCHMOD`：按 fd 改 classic 9 位 mode（`a1`=fd、`a2`=mode_bits）。
+/// 判定面与路径版 `SYS_ENTRY_UPDATE`/CHMOD 一致（属主或 CAP_OWNER），仅少了目录遍历检查。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_FCHMOD` 同值、注释互指。
+pub const SYS_STREAM_FCHMOD: u32 = nr(domain::STREAM, 0x0B); // 0x1B
+
+/// `SYS_STREAM_FCHOWN`：按 fd 改属主（`a1`=fd、`a2`=uid、`a3`=gid）。
+/// 判定面与路径版一致（属主或 CAP_OWNER；易他主另需 CAP_SYSTEM）。
+pub const SYS_STREAM_FCHOWN: u32 = nr(domain::STREAM, 0x0C); // 0x1C
+
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
 pub const SYS_MEMORY_MAP: u32 = nr(domain::MEMORY, op::CREATE); // 0x21

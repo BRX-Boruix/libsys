@@ -908,6 +908,16 @@ pub fn fsync(fd: u64) -> Result<(), Error> {
     crate::syscall::call(SYS_STREAM_FSYNC, [fd, 0, 0, 0, 0, 0]).map(|_| ())
 }
 
+/// `fchmod(fd, bits)`：按 fd 改 classic 9 位 mode（见内核 `SYS_STREAM_FCHMOD`）。
+pub fn fchmod(fd: u64, bits: u32) -> Result<(), Error> {
+    crate::syscall::call(SYS_STREAM_FCHMOD, [fd, bits as u64, 0, 0, 0, 0]).map(|_| ())
+}
+
+/// `fchown(fd, uid, gid)`：按 fd 改属主（见内核 `SYS_STREAM_FCHOWN`）。
+pub fn fchown(fd: u64, uid: u32, gid: u32) -> Result<(), Error> {
+    crate::syscall::call(SYS_STREAM_FCHOWN, [fd, uid as u64, gid as u64, 0, 0, 0]).map(|_| ())
+}
+
 /// 「整体读入」的总量上限。
 ///
 /// **为什么必须有**：本函数靠 `read` 返回 0 判定 EOF。宿主测试里 `syscall::call` 返回垃圾
