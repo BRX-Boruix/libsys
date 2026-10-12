@@ -10,7 +10,7 @@
 //! 恒满足。
 
 use crate::error::Error;
-use crate::nr::{SYS_SIGNAL_ACTION, SYS_SIGNAL_MASK};
+use crate::nr::{SYS_SIGNAL_ACTION, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING};
 
 // ---------- 信号号常量（与内核 task::signals 对齐，S13） ----------
 
@@ -74,6 +74,14 @@ pub fn action(sig: u32, handler: u64, flags: u32) -> Result<u64, Error> {
 /// **旧**屏蔽集。SIGKILL/SIGSTOP 恒强制置位不可解除。
 pub fn mask(how: u32, set: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_SIGNAL_MASK, [how as u64, set, 0, 0, 0, 0])
+}
+
+/// `pending() -> 待决集位图`：查询当前进程的**待决信号集**（POSIX `sigpending`）。
+///
+/// 与 [`mask`] 的屏蔽集是**不同**的集合：屏蔽集决定「哪些信号被挡住」，
+/// 待决集是「挡住之后积压了哪些」。
+pub fn pending() -> Result<u64, Error> {
+    crate::syscall::call(SYS_SIGNAL_PENDING, [0, 0, 0, 0, 0, 0])
 }
 
 /// `raise(pid, sig)`：向进程投递信号（复用 TASK 域 kill，ADR-034 §2.3）。

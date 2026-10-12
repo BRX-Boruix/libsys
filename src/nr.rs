@@ -354,6 +354,11 @@ pub const SYS_SIGNAL_ACTION: u32 = nr(domain::SIGNAL, op::WRITE); // 0x83
 /// `signal_return()`：handler 返回后恢复原帧（rt_sigreturn）。
 pub const SYS_SIGNAL_RETURN: u32 = nr(domain::SIGNAL, op::DELETE); // 0x84
 
+/// `SYS_SIGNAL_PENDING`：查询当前进程的待决信号集（POSIX `sigpending`）。无参数，返回 u64 位图。
+/// 与屏蔽集（`SYS_SIGNAL_MASK`）是**不同**的集合：屏蔽集决定挡住哪些，待决集是挡住之后积压了哪些。
+/// SIGNAL 域扩展动词 0x05。双侧镜像（S13）：与内核 `kernel::syscall::SYS_SIGNAL_PENDING` 同值、注释互指。
+pub const SYS_SIGNAL_PENDING: u32 = nr(domain::SIGNAL, 0x05); // 0x85
+
 // ---------- 9. POWER Domain (0x90, ADR-036) ----------
 /// `power_off()` -> never：请求 ACPI 软关机（S5），成功后机器断电、永不返回。
 /// 无可用 S5 信息/电源管理不可用时返回错误，调用方保留在用户态。
