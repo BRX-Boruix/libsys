@@ -113,7 +113,7 @@ pub use process::{IdentityInfo, identity_query, identity_set};
 // `groups_clear` 在 A2-4 已定义于 `process`（私有模块），但从未在 crate 根重导出，
 // 故用户程序实际无法调用。A2-7 的 `login` 需要"降权前先设组"，编译时暴露了该缺口。
 // 一并补齐 `GroupsInfo` 与两个子动作常量的根重导出（常量对调用方判断语义必需）。
-pub use process::{GroupsInfo, groups_clear, groups_get, groups_set};
+pub use process::{GroupsInfo, groups_clear, groups_get, groups_set, nice_get, nice_set};
 pub use random::bytes as random_bytes;
 
 pub use system::info;

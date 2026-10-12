@@ -219,6 +219,18 @@ pub const SYS_TASK_GROUPS_SET: u32 = nr(domain::TASK, 0x0D); // 0x3D
 /// TASK 域扩展动词 0x0E。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_GROUPS_GET` 同值、注释互指。
 pub const SYS_TASK_GROUPS_GET: u32 = nr(domain::TASK, 0x0E); // 0x3E
 
+/// `SYS_TASK_NICE`：查询/设置进程 nice（`a1`=方向、`a2`=pid（0=自身）、`a3`=新值）。
+/// **返回值编码为 nice + NICE_BIAS**：nice 可为负而错误编码占用 bit63，直接返回 i32 会把
+/// 负 nice 读成错误。TASK 域扩展动词 0x0F。双侧镜像（S13）：与内核 `SYS_TASK_NICE` 同值。
+pub const SYS_TASK_NICE: u32 = nr(domain::TASK, 0x0F); // 0x3F
+
+/// [`SYS_TASK_NICE`] 的 `a1`：查询。
+pub const NICE_GET: u64 = 0;
+/// [`SYS_TASK_NICE`] 的 `a1`：设置。
+pub const NICE_SET: u64 = 1;
+/// 返回值偏移：`nice + NICE_BIAS`（与内核同值，S13）。
+pub const NICE_BIAS: i32 = 20;
+
 /// `SYS_TASK_GROUPS_SET` 的保留参数（`a3`）唯一合法取值。
 pub const GROUPS_SET_RESERVED_NONE: u64 = 0;
 

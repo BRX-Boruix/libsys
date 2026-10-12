@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::nr::{
     DERIVE_FLAGS_NONE, GROUPS_SET_CLEAR, GROUPS_SET_REPLACE, GROUPS_SET_RESERVED_NONE,
     IDENTITY_SET_RESERVED_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID,
-    SYS_TASK_GROUPS_GET, SYS_TASK_GROUPS_SET, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET,
+    NICE_BIAS, NICE_GET, NICE_SET, SYS_TASK_GROUPS_GET, SYS_TASK_GROUPS_SET, SYS_TASK_NICE, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET,
     SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT,
 };
 
@@ -542,6 +542,23 @@ pub fn groups_get(out: &mut [u32]) -> Result<usize, Error> {
         (out.as_mut_ptr() as u64, out.len() as u64)
     };
     crate::syscall::call(SYS_TASK_GROUPS_GET, [ptr, cap, 0, 0, 0, 0]).map(|n| n as usize)
+}
+
+/// `nice_get(pid)`：读进程 nice（`pid == 0` = 自身）。返回解码后的 nice（可为负）。
+pub fn nice_get(pid: usize) -> Result<i32, Error> {
+    let raw = crate::syscall::call(SYS_TASK_NICE, [NICE_GET, pid as u64, 0, 0, 0, 0])?;
+    Ok(raw as i32 - NICE_BIAS)
+}
+
+/// `nice_set(pid, nice)`：设进程 nice（`pid == 0` = 自身），返回**实际生效**值（已钳制）。
+///
+/// 授权：改自身自由；改他人需 `CAP_SYSTEM`（内核单点判定）。
+pub fn nice_set(pid: usize, nice: i32) -> Result<i32, Error> {
+    let raw = crate::syscall::call(
+        SYS_TASK_NICE,
+        [NICE_SET, pid as u64, (nice as u32) as u64, 0, 0, 0],
+    )?;
+    Ok(raw as i32 - NICE_BIAS)
 }
 
 /// `groups_clear()`：清空本进程组的补充组集合（A2-4）。语义同 `groups_set(&[])`，
