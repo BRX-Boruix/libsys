@@ -10,7 +10,9 @@
 //! 恒满足。
 
 use crate::error::Error;
-use crate::nr::{SYS_SIGNAL_ACTION, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING, SYS_SIGNAL_SUSPEND};
+use crate::nr::{
+    SYS_SIGNAL_ACTION, SYS_SIGNAL_ALARM, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING, SYS_SIGNAL_SUSPEND,
+};
 
 // ---------- 信号号常量（与内核 task::signals 对齐，S13） ----------
 
@@ -90,6 +92,13 @@ pub fn pending() -> Result<u64, Error> {
 /// 屏蔽集由内核在**投递点**还原（见内核 `SYS_SIGNAL_SUSPEND` 的说明）。
 pub fn suspend(mask: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_SIGNAL_SUSPEND, [mask, 0, 0, 0, 0, 0])
+}
+
+/// `alarm(seconds)`：设置/取消一次性闹钟，返回**上一个**闹钟的剩余秒数（POSIX `alarm`）。
+///
+/// `seconds == 0` 取消。到期由内核投递 `SIGALRM`。
+pub fn alarm(seconds: u32) -> Result<u64, Error> {
+    crate::syscall::call(SYS_SIGNAL_ALARM, [seconds as u64, 0, 0, 0, 0, 0])
 }
 
 /// `raise(pid, sig)`：向进程投递信号（复用 TASK 域 kill，ADR-034 §2.3）。

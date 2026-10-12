@@ -382,6 +382,10 @@ pub const SYS_SIGNAL_PENDING: u32 = nr(domain::SIGNAL, 0x05); // 0x85
 /// 唤醒后直接返回用户态，没有「唤醒后继续」的路径。SIGNAL 域扩展动词 0x06。
 pub const SYS_SIGNAL_SUSPEND: u32 = nr(domain::SIGNAL, 0x06); // 0x86
 
+/// `SYS_SIGNAL_ALARM`：`alarm(seconds)`——`a1` = 秒数（0 = 取消），返回上一个闹钟剩余秒数。
+/// SIGNAL 域扩展动词 0x07。双侧镜像（S13）：与内核 `SYS_SIGNAL_ALARM` 同值。
+pub const SYS_SIGNAL_ALARM: u32 = nr(domain::SIGNAL, 0x07); // 0x87
+
 // ---------- 9. POWER Domain (0x90, ADR-036) ----------
 /// `power_off()` -> never：请求 ACPI 软关机（S5），成功后机器断电、永不返回。
 /// 无可用 S5 信息/电源管理不可用时返回错误，调用方保留在用户态。
