@@ -900,7 +900,20 @@ pub fn ftruncate(fd: u64, len: u64) -> Result<(), Error> {
     crate::syscall::call(SYS_STREAM_FTRUNCATE, [fd, len, 0, 0, 0, 0]).map(|_| ())
 }
 
+/// 「整体读入」的总量上限。
+///
+/// **为什么必须有**：本函数靠 `read` 返回 0 判定 EOF。宿主测试里 `syscall::call` 返回垃圾
+/// （实测 3221225477，见下方 `clamp_read_n` 的注释），`read` **永不返回 0** ⇒ 循环无限增长，
+/// 实测撞到 `memory allocation of 8589934592 bytes failed`（8 GiB）才停。超过本上限即如实报
+/// `OutOfRange`——**不静默截断、也不无限增长**。
+///
+/// 取值依据：本系统当前的「整体读入」用途都是小配置/脚本（`/config/*.json`、`/etc/*` 之类，
+/// 实测几十 KB 量级），64 MiB 留三个数量级余量，同时把失控增长挡在 8 GiB 之前。
+pub const READ_TO_END_MAX: usize = 64 * 1024 * 1024;
+
 /// 高阶便捷函数：读取文件全部内容到 `Vec<u8>`。
+///
+/// 读入总量超过 [`READ_TO_END_MAX`] 即返回 `OutOfRange`（见该常量的理由）。
 pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
     let fd = open(path, OpenFlags::READ_ONLY, Permissions::readonly())?;
     let mut data = Vec::new();
@@ -913,6 +926,11 @@ pub fn read_to_end(path: &str) -> Result<Vec<u8>, Error> {
             // syscall::call 返回垃圾（实测 3221225477），不钳即越界 panic。
             Ok(n) => {
                 let n = clamp_read_n(n, chunk.len());
+                if data.len() + n > READ_TO_END_MAX {
+                    // 失控增长（宿主上 read 永不返回 0 时就是这条路）——如实报错，不静默截断。
+                    let _ = close(fd);
+                    return Err(Error::OutOfRange);
+                }
                 data.extend_from_slice(&chunk[..n]);
             }
             Err(e) => {
@@ -1086,6 +1104,20 @@ pub(crate) fn clamp_read_n(n: usize, buf_len: usize) -> usize {
 
 #[cfg(test)]
 mod io_tests {
+    /// D.1 回归锁：`read_to_end` 在**宿主**上必须有界结束，而不是无限增长到 OOM。
+    ///
+    /// 宿主上 syscall 无意义：`open` 可能看起来成功、`read` 返回垃圾且**永不返回 0**。
+    /// 加 [`super::READ_TO_END_MAX`] 之前，这条路径实测撞到
+    /// `memory allocation of 8589934592 bytes failed`（8 GiB，出现在 libc 的宿主单测里）。
+    /// 本测锁定「有界 + 如实 Err」，**不**接受伪造的空 Vec。
+    #[test]
+    fn read_to_end_is_bounded_on_host() {
+        let r = super::read_to_end("/config/groups.json");
+        assert!(
+            r.is_err(),
+            "宿主 syscall 无意义 ⇒ 必须如实 Err；返回 Ok 说明发生了静默伪造"
+        );
+    }
     /// J-TOKEN-B / PRE-12：**ABI 尺寸在用户侧独立钉死**。
     ///
     /// 内核侧（`vfs::inode`）与用户侧（本文件）各有一次编译期断言，
