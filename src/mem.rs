@@ -2,7 +2,8 @@
 
 use crate::error::Error;
 use crate::nr::{
-    MEM_MAP_SHARED, SYS_MEMORY_GROW, SYS_MEMORY_MAP, SYS_MEMORY_PROTECT, SYS_MEMORY_UNMAP,
+    MEM_MAP_SHARED, SYS_MEMORY_GROW, SYS_MEMORY_MAP, SYS_MEMORY_PROTECT, SYS_MEMORY_QUERY,
+    SYS_MEMORY_UNMAP,
 };
 
 /// mmap 的 prot 位（3P4-4）。**与内核 mm::user_space 的编号同一事实**（两侧互指）。
@@ -54,6 +55,21 @@ pub fn shm_map(id: u64, size: u64) -> Result<u64, Error> {
 #[allow(dead_code)]
 pub fn shm_create(size: u64) -> Result<u64, Error> {
     crate::syscall::call(SYS_MEMORY_MAP, [size, MEM_MAP_SHARED, 0, 0, 0, 0])
+}
+
+/// `memory_query(addr) -> 位图`：查询 `addr` 所在 4KB 页的**页表真值**（KM2 / `SYS_MEMORY_QUERY` 0x22）。
+///
+/// 位图 `0` = 未映射（含 demand 区已声明但未触碰——查询**只读页表，绝不触发补页**）；
+/// 否则为 `nr::MEMQ_PRESENT | [MEMQ_USER] | [MEMQ_WRITABLE]`。
+///
+/// **为什么补这一层**：内核 `sys_memory_query` 与 `nr::SYS_MEMORY_QUERY`/`MEMQ_*` 早就在，
+/// 但 libc 侧没有 C ABI 出口，用户程序只能自己写 `int 0x80`（本仓的夹具当时就是这么做的）。
+/// 那是**可达性缺口**，不是缺功能。
+pub fn query(addr: u64) -> Result<u64, Error> {
+    let mut out: u64 = 0;
+    let out_ptr = &mut out as *mut u64 as u64;
+    crate::syscall::call(SYS_MEMORY_QUERY, [addr, out_ptr, 0, 0, 0, 0])?;
+    Ok(out)
 }
 
 /// `munmap(addr, size)`：释放 `mmap` 返回的匿名或共享虚拟地址区间。
