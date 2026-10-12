@@ -256,6 +256,12 @@ pub const SYS_ENTRY_CHDIR: u32 = nr(domain::VFS, 0x05); // 0x45
 pub const SYS_ENTRY_GETCWD: u32 = nr(domain::VFS, 0x06); // 0x46
 /// `symlink(target, link_path)`：创建软链接（VFS 域 0x07 / 号 0x47，3P4-8）。
 pub const SYS_ENTRY_SYMLINK: u32 = nr(domain::VFS, 0x07); // 0x47
+
+/// `SYS_ENTRY_LINK`：为 target 在 link_path 处创建**硬链接**（POSIX `link(2)`）。
+/// 与 symlink 本质不同：软链接造新节点，硬链接让**同一个节点**多一个目录项（共享内容、同 st_ino）。
+/// 目标或父目录的文件系统未实现 → NotSupported（不接受近似：复制内容不是硬链接）。
+/// VFS 域扩展动词 0x09。双侧镜像（S13）：与内核 `kernel::syscall::SYS_ENTRY_LINK` 同值、注释互指。
+pub const SYS_ENTRY_LINK: u32 = nr(domain::VFS, 0x09); // 0x49
 /// `readlink(path, buf, cap)`：读软链接目标（VFS 域 0x08 / 号 0x48，3P4-8）。
 /// 写入**不含**终止 NUL（POSIX 语义）；缓冲不足如实 NoSpace。
 pub const SYS_ENTRY_READLINK: u32 = nr(domain::VFS, 0x08); // 0x48

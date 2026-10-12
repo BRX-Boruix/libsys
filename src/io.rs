@@ -252,6 +252,12 @@ pub struct StatInfo {
     /// **`0` 不得读作「pid 0 持有控制台」**：它表示「无主/未知」。
     /// 真值来自节点自述（`INode::console_owner`，S15 单点定义）。
     pub console_owner: u64,
+    /// **稳定文件身份**（POSIX `st_ino`）——内核 `INode::stable_id` 的真值。
+    /// **尾部追加**；`0` = 未知（`from_metadata` 无节点身份，不虚报）。
+    pub ino: u64,
+    /// 硬链接计数（POSIX `st_nlink`）——内核 `INode::nlink` 的真值。
+    /// **尾部追加**；`0` = 未知。此前 libc 侧 `st_nlink` 硬编码 0（硬链接无内核出口）。
+    pub nlink: u32,
 }
 
 /// PRE-12 / A1-4：**两侧镜像一致性断言**（编译期钉死）。
@@ -262,11 +268,13 @@ pub struct StatInfo {
 /// owner_uid@48 owner_gid@52 is_terminal@56 console_owner@64，sizeof=72
 /// （repr(C)，尾部追加只增不改；J-TOKEN-B 追加 console_owner）。
 const _: () = {
-    assert!(core::mem::size_of::<StatInfo>() == 72, "StatInfo layout drifted: sync kernel mirror");
+    assert!(core::mem::size_of::<StatInfo>() == 88, "StatInfo layout drifted: sync kernel mirror");
     assert!(core::mem::offset_of!(StatInfo, owner_uid) == 48);
     assert!(core::mem::offset_of!(StatInfo, owner_gid) == 52);
     assert!(core::mem::offset_of!(StatInfo, is_terminal) == 56);
     assert!(core::mem::offset_of!(StatInfo, console_owner) == 64);
+    assert!(core::mem::offset_of!(StatInfo, ino) == 72);
+    assert!(core::mem::offset_of!(StatInfo, nlink) == 80);
 };
 
 /// 进程身份查询结果（A2-1 / ADR-040 §3.5 G1；与内核 `task::IdentityInfo` 同布局的镜像）。
@@ -849,6 +857,22 @@ pub fn getcwd() -> Result<alloc::string::String, Error> {
 ///
 /// `target` 是**软链内容**（不解析、不要求存在）；`link_path` 是新建链接的路径。
 /// 相对路径相对当前 cwd 解析（内核 syscall 层拼接，VFS 只接受绝对路径）。
+/// `link(target, link_path)`：创建硬链接（见内核 `SYS_ENTRY_LINK`）。
+pub fn link(target: &str, link_path: &str) -> Result<(), Error> {
+    let mut t = [0u8; 256];
+    let mut l = [0u8; 256];
+    if target.len() >= 255 || link_path.len() >= 255 {
+        return Err(Error::OutOfRange);
+    }
+    t[..target.len()].copy_from_slice(target.as_bytes());
+    l[..link_path.len()].copy_from_slice(link_path.as_bytes());
+    crate::syscall::call(
+        SYS_ENTRY_LINK,
+        [t.as_ptr() as u64, l.as_ptr() as u64, 0, 0, 0, 0],
+    )
+    .map(|_| ())
+}
+
 pub fn symlink(target: &str, link_path: &str) -> Result<(), Error> {
     // 两条路径都要 NUL 终止；两段式栈缓冲在这里不划算（两个变长输入），
     // 故直接用堆（libsys 自有分配器，失败即如实上抛）。
@@ -1148,7 +1172,7 @@ mod io_tests {
     #[test]
     fn statinfo_abi_layout_is_72_bytes() {
         use core::mem::{offset_of, size_of};
-        assert_eq!(size_of::<crate::io::StatInfo>(), 72, "StatInfo sizeof (J-TOKEN-B)");
+        assert_eq!(size_of::<crate::io::StatInfo>(), 88, "StatInfo sizeof (J-TOKEN-B + ino/nlink)");
         // 尾部追加纪律：既有字段偏移一律不变。
         assert_eq!(offset_of!(crate::io::StatInfo, node_type), 0);
         assert_eq!(offset_of!(crate::io::StatInfo, size), 8);
@@ -1161,6 +1185,8 @@ mod io_tests {
         assert_eq!(offset_of!(crate::io::StatInfo, is_terminal), 56);
         // J-TOKEN-B 新增字段：u32 之后按 u64 对齐，落在 64。
         assert_eq!(offset_of!(crate::io::StatInfo, console_owner), 64);
+        assert_eq!(offset_of!(crate::io::StatInfo, ino), 72);
+        assert_eq!(offset_of!(crate::io::StatInfo, nlink), 80);
     }
 
     /// J-TOKEN-B：`0` 表示**无主/未知**，不是「pid 0 持有控制台」。
@@ -1180,6 +1206,8 @@ mod io_tests {
             owner_gid: 0,
             is_terminal: 0,
             console_owner: 0,
+            ino: 0,
+            nlink: 0,
         };
         assert_eq!(si.console_owner, 0, "0 = unowned/unknown, NOT pid 0");
     }
