@@ -386,6 +386,11 @@ pub const SYS_SIGNAL_SUSPEND: u32 = nr(domain::SIGNAL, 0x06); // 0x86
 /// SIGNAL 域扩展动词 0x07。双侧镜像（S13）：与内核 `SYS_SIGNAL_ALARM` 同值。
 pub const SYS_SIGNAL_ALARM: u32 = nr(domain::SIGNAL, 0x07); // 0x87
 
+/// `SYS_SIGNAL_ALTSTACK`：`sigaltstack`——`a1`=基址、`a2`=大小（皆 0 = SS_DISABLE）、
+/// `a3`=旧值出参（16 字节，0 = 不要）。与 `sigaction` 的 SA_ONSTACK 配合。
+/// SIGNAL 域扩展动词 0x08。双侧镜像（S13）：与内核 `SYS_SIGNAL_ALTSTACK` 同值。
+pub const SYS_SIGNAL_ALTSTACK: u32 = nr(domain::SIGNAL, 0x08); // 0x88
+
 // ---------- 9. POWER Domain (0x90, ADR-036) ----------
 /// `power_off()` -> never：请求 ACPI 软关机（S5），成功后机器断电、永不返回。
 /// 无可用 S5 信息/电源管理不可用时返回错误，调用方保留在用户态。

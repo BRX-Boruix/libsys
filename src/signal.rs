@@ -11,7 +11,8 @@
 
 use crate::error::Error;
 use crate::nr::{
-    SYS_SIGNAL_ACTION, SYS_SIGNAL_ALARM, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING, SYS_SIGNAL_SUSPEND,
+    SYS_SIGNAL_ACTION, SYS_SIGNAL_ALARM, SYS_SIGNAL_ALTSTACK, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING,
+    SYS_SIGNAL_SUSPEND,
 };
 
 // ---------- 信号号常量（与内核 task::signals 对齐，S13） ----------
@@ -99,6 +100,32 @@ pub fn suspend(mask: u64) -> Result<u64, Error> {
 /// `seconds == 0` 取消。到期由内核投递 `SIGALRM`。
 pub fn alarm(seconds: u32) -> Result<u64, Error> {
     crate::syscall::call(SYS_SIGNAL_ALARM, [seconds as u64, 0, 0, 0, 0, 0])
+}
+
+/// `altstack_set(base, size) -> (旧 base, 旧 size)`：设置备用信号栈（POSIX `sigaltstack`）。
+///
+/// `(0, 0)` = 禁用。返回旧值；未设置过则为 `(0, 0)`。
+pub fn altstack_set(base: u64, size: u64) -> Result<(u64, u64), Error> {
+    altstack_op(base, size, 0)
+}
+
+/// `altstack_get() -> (base, size)`：**纯查询**当前备用信号栈（不改状态）。
+pub fn altstack_get() -> Result<(u64, u64), Error> {
+    altstack_op(0, 0, 1)
+}
+
+/// `altstack_op(base, size, mode)`：`mode` 0 = 设置、1 = 纯查询（见内核契约）。
+fn altstack_op(base: u64, size: u64, mode: u64) -> Result<(u64, u64), Error> {
+    let mut old = [0u8; 16];
+    crate::syscall::call(
+        SYS_SIGNAL_ALTSTACK,
+        [base, size, old.as_mut_ptr() as u64, mode, 0, 0],
+    )?;
+    let mut b = [0u8; 8];
+    let mut s = [0u8; 8];
+    b.copy_from_slice(&old[..8]);
+    s.copy_from_slice(&old[8..]);
+    Ok((u64::from_le_bytes(b), u64::from_le_bytes(s)))
 }
 
 /// `raise(pid, sig)`：向进程投递信号（复用 TASK 域 kill，ADR-034 §2.3）。
