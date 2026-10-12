@@ -112,6 +112,11 @@ pub const SYS_STREAM_FOCUS_SET: u32 = nr(domain::STREAM, 0x08); // 0x18
 /// fd 基（不是路径基）——C 侧 `ftruncate` 的语义；ext2 的 truncate 落盘实现已在。
 pub const SYS_STREAM_FTRUNCATE: u32 = nr(domain::STREAM, 0x09); // 0x19
 
+/// `SYS_STREAM_FSYNC`：把数据冲刷到稳定存储（`a1` = fd）。
+/// 成功 0；fd 不存在 → NotFound；管道端 → InvalidParam；仍有脏块 → Io。
+/// TASK 无关、STREAM 域扩展动词 0x0A。双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_FSYNC` 同值、注释互指。
+pub const SYS_STREAM_FSYNC: u32 = nr(domain::STREAM, 0x0A); // 0x1A
+
 // ---------- 2. MEMORY Domain (0x20) ----------
 /// `memory_map(size, flags, shared_id) -> addr`：分配/映射虚存区。
 pub const SYS_MEMORY_MAP: u32 = nr(domain::MEMORY, op::CREATE); // 0x21

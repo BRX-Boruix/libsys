@@ -900,6 +900,14 @@ pub fn ftruncate(fd: u64, len: u64) -> Result<(), Error> {
     crate::syscall::call(SYS_STREAM_FTRUNCATE, [fd, len, 0, 0, 0, 0]).map(|_| ())
 }
 
+/// `fsync(fd)`：把数据冲刷到稳定存储（见内核 `SYS_STREAM_FSYNC`）。
+///
+/// **诚实边界**：本内核的块缓存是每设备一份 ⇒ 实现冲刷**全部**设备缓存，是 POSIX 要求的
+/// **超集**（承诺是「数据已在稳定存储上」，多冲不违反），粒度粗但语义正确。
+pub fn fsync(fd: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_STREAM_FSYNC, [fd, 0, 0, 0, 0, 0]).map(|_| ())
+}
+
 /// 「整体读入」的总量上限。
 ///
 /// **为什么必须有**：本函数靠 `read` 返回 0 判定 EOF。宿主测试里 `syscall::call` 返回垃圾
