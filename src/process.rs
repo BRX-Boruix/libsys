@@ -4,8 +4,8 @@ use crate::error::Error;
 use crate::nr::{
     DERIVE_FLAGS_NONE, GROUPS_SET_CLEAR, GROUPS_SET_REPLACE, GROUPS_SET_RESERVED_NONE,
     IDENTITY_SET_RESERVED_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID,
-    SYS_TASK_GROUPS_SET, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET, SYS_TASK_SIGNAL,
-    SYS_TASK_SPAWN, SYS_TASK_WAIT,
+    SYS_TASK_GROUPS_GET, SYS_TASK_GROUPS_SET, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET,
+    SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT,
 };
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
@@ -529,6 +529,19 @@ pub fn groups_set(gids: &[u32]) -> Result<GroupsInfo, Error> {
         ],
     )?;
     Ok(info)
+}
+
+/// `groups_get(out) -> 实际条数`：查询调用进程组的补充组集合（见内核 `SYS_TASK_GROUPS_GET`）。
+///
+/// 写入 `min(out.len(), 实际条数)` 个，**返回实际条数**（可能 > `out.len()`）。
+/// 传空切片即「只问条数」（POSIX `getgroups(0, NULL)` 的语义）；缓冲不足的判定属调用方契约。
+pub fn groups_get(out: &mut [u32]) -> Result<usize, Error> {
+    let (ptr, cap) = if out.is_empty() {
+        (0u64, 0u64)
+    } else {
+        (out.as_mut_ptr() as u64, out.len() as u64)
+    };
+    crate::syscall::call(SYS_TASK_GROUPS_GET, [ptr, cap, 0, 0, 0, 0]).map(|n| n as usize)
 }
 
 /// `groups_clear()`：清空本进程组的补充组集合（A2-4）。语义同 `groups_set(&[])`，

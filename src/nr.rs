@@ -198,6 +198,13 @@ pub const IDENTITY_SET_RESERVED_NONE: u64 = 0;
 /// `kernel::syscall::SYS_TASK_GROUPS_SET` 同值、注释互指。
 pub const SYS_TASK_GROUPS_SET: u32 = nr(domain::TASK, 0x0D); // 0x3D
 
+/// `SYS_TASK_GROUPS_GET`：查询调用进程组的补充组集合（POSIX `getgroups` 的内核真值）。
+///
+/// 参数：`a1`=用户缓冲（`u32` 定长元素）、`a2`=容量（元素个数，0 = 纯探测、此时 `a1` 可为 0）。
+/// **返回实际条数**（可能 > 容量）；写入 `min(容量, 实际条数)` 个。缓冲不足的判定属调用方契约。
+/// TASK 域扩展动词 0x0E。双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_GROUPS_GET` 同值、注释互指。
+pub const SYS_TASK_GROUPS_GET: u32 = nr(domain::TASK, 0x0E); // 0x3E
+
 /// `SYS_TASK_GROUPS_SET` 的保留参数（`a3`）唯一合法取值。
 pub const GROUPS_SET_RESERVED_NONE: u64 = 0;
 
