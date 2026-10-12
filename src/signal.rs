@@ -10,7 +10,7 @@
 //! 恒满足。
 
 use crate::error::Error;
-use crate::nr::{SYS_SIGNAL_ACTION, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING};
+use crate::nr::{SYS_SIGNAL_ACTION, SYS_SIGNAL_MASK, SYS_SIGNAL_PENDING, SYS_SIGNAL_SUSPEND};
 
 // ---------- 信号号常量（与内核 task::signals 对齐，S13） ----------
 
@@ -82,6 +82,14 @@ pub fn mask(how: u32, set: u64) -> Result<u64, Error> {
 /// 待决集是「挡住之后积压了哪些」。
 pub fn pending() -> Result<u64, Error> {
     crate::syscall::call(SYS_SIGNAL_PENDING, [0, 0, 0, 0, 0, 0])
+}
+
+/// `suspend(mask)`：原子地把屏蔽集换成 `mask` 并挂起，直到有信号被投递（POSIX `sigsuspend`）。
+///
+/// 恒返回 `Err(Interrupted)`（POSIX：无论被哪个信号唤醒，`sigsuspend` 都返回 -1 置 EINTR）。
+/// 屏蔽集由内核在**投递点**还原（见内核 `SYS_SIGNAL_SUSPEND` 的说明）。
+pub fn suspend(mask: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_SIGNAL_SUSPEND, [mask, 0, 0, 0, 0, 0])
 }
 
 /// `raise(pid, sig)`：向进程投递信号（复用 TASK 域 kill，ADR-034 §2.3）。
