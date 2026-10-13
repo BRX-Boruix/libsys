@@ -34,6 +34,7 @@ pub mod auxv;
 pub mod error;
 // I-EVENTS 阶段 2（ADR-047）：事件→字节转换层（keymap 上移用户态，ADR-045 决策 3）。
 pub mod event;
+pub use event::{CONSOLES_DIR_PREFIX, CONSOLE_PATH};
 pub mod json;
 pub mod nr;
 pub mod signal;

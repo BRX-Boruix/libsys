@@ -469,6 +469,14 @@ impl EventSourceReader {
 /// console 设备路径（P2 落地的字节端节点；单一事实源，S15）。
 pub const CONSOLE_PATH: &str = "/devices/console";
 
+/// console **实例节点目录前缀**（`/devices/consoles/`）。
+///
+/// **用户态的单一事实源**：init 的零堆路径拼接、login 的会话节点、consoled 的写端
+/// 都从这里取，不再各写一份字面量。内核侧（devfs 建该目录）另有一处，由
+/// tools/checks/dist/abi_mirrors_agree.py 的「路径契约」钉住两侧拼法一致。
+/// **跨仓共享 crate 才是终极单点**，那是架构决定；本常量先把**用户态**收成一处。
+pub const CONSOLES_DIR_PREFIX: &str = "/devices/consoles/";
+
 /// 焦点实例切换（ADR-048 T3，owner 裁决 α：SYS_STREAM_FOCUS_SET）。
 ///
 /// **调用契约（S13 单点）**：仅 login 在认证成功后、**降权前**调用
@@ -526,7 +534,7 @@ impl ConsoleWriter {
         let path: alloc::string::String = if instance == 0 {
             alloc::borrow::ToOwned::to_owned(CONSOLE_PATH)
         } else {
-            alloc::format!("/devices/consoles/{}", instance)
+            alloc::format!("{}{}", CONSOLES_DIR_PREFIX, instance)
         };
         let fd = crate::io::open(
             &path,
