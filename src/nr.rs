@@ -101,6 +101,19 @@ pub const SYS_STREAM_CLOSE: u32 = nr(domain::STREAM, op::DELETE); // 0x14
 /// 方案 A）。把 `old_fd` 的句柄复制到 `new_fd`（先关 `new_fd` 旧句柄），副本
 /// 与原句柄共享同一文件描述/管道端。管道端引用计数由内核同步维护。
 pub const SYS_STREAM_DUP: u32 = nr(domain::STREAM, 0x05); // 0x15
+/// `SYS_STREAM_LOCK`：flock 文件锁（ADR-014 / ADR-033 A2-1 R6；内核 `sys_flock`）。
+/// `a1` = fd、`a2` = 命令字（见下方 `FLOCK_CMD_*`）。冲突返回 `Busy`（**不阻塞**）。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_LOCK` 同值、注释互指。
+pub const SYS_STREAM_LOCK: u32 = nr(domain::STREAM, 0x06); // 0x16
+
+/// `SYS_STREAM_LOCK` 的 `a2` 命令字：取共享锁。双侧镜像（S13）：与内核
+/// `kernel::syscall::FLOCK_CMD_SHARED` 同值、注释互指。
+pub const FLOCK_CMD_SHARED: u64 = 0;
+/// `SYS_STREAM_LOCK` 的 `a2` 命令字：取独占锁（与任何锁冲突）。
+pub const FLOCK_CMD_EXCLUSIVE: u64 = 1;
+/// `SYS_STREAM_LOCK` 的 `a2` 命令字：释放本 owner 在该 inode 上的锁。
+pub const FLOCK_CMD_UNLOCK: u64 = 2;
+
 /// `stream_fstat(fd, out_buf_ptr) -> len`：按 fd 读元数据（收 `StatInfo` 定长结构）。
 pub const SYS_STREAM_FSTAT: u32 = nr(domain::STREAM, 0x07); // 0x17
 /// `focus_set(instance) -> 0`（SYS_STREAM_FOCUS_SET，ADR-048 T3，owner 裁决

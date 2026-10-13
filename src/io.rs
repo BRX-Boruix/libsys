@@ -942,6 +942,17 @@ pub fn fchown(fd: u64, uid: u32, gid: u32) -> Result<(), Error> {
     crate::syscall::call(SYS_STREAM_FCHOWN, [fd, uid as u64, gid as u64, 0, 0, 0]).map(|_| ())
 }
 
+/// `flock(fd, cmd)`：文件锁（内核 `SYS_STREAM_LOCK`，ADR-014 / ADR-033 A2-1 R6）。
+///
+/// `cmd` 取 [`crate::nr::FLOCK_CMD_SHARED`] / [`crate::nr::FLOCK_CMD_EXCLUSIVE`] /
+/// [`crate::nr::FLOCK_CMD_UNLOCK`]。
+///
+/// **诚实边界**：内核锁表**不阻塞**——冲突时立即返回 `Error::Busy`（由调用方决定
+/// 重试还是放弃）。本层不做"轮询到拿到锁"的近似。
+pub fn flock(fd: u64, cmd: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_STREAM_LOCK, [fd, cmd, 0, 0, 0, 0]).map(|_| ())
+}
+
 /// 「整体读入」的总量上限。
 ///
 /// **为什么必须有**：本函数靠 `read` 返回 0 判定 EOF。宿主测试里 `syscall::call` 返回垃圾
