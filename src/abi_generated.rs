@@ -147,3 +147,8 @@ pub const fn from_errno(e: i32) -> crate::error::Error {
 pub const FLOCK_CMD_SHARED: u64 = 0;
 pub const FLOCK_CMD_EXCLUSIVE: u64 = 1;
 pub const FLOCK_CMD_UNLOCK: u64 = 2;
+
+// ---------- 系统路径（与内核 devfs 同一事实源） ----------
+
+pub const CONSOLE_PATH: &str = "/devices/console";
+pub const CONSOLES_DIR_PREFIX: &str = "/devices/consoles/";
