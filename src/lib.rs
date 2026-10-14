@@ -38,6 +38,10 @@ pub mod error;
 // I-EVENTS 阶段 2（ADR-047）：事件→字节转换层（keymap 上移用户态，ADR-045 决策 3）。
 pub mod event;
 pub use event::{CONSOLES_DIR_PREFIX, CONSOLE_PATH};
+// ABI token（卷标 / 3p 子目录 / 由它们派生的路径）——生成物，见 tools/abi/constants.json。
+pub use abi_generated::{
+    DATA_VOLUME_LABEL, DATA_VOLUME_PATH, THIRD_PARTY_PATH, THIRD_PARTY_SUBDIR, WELCOME_PROBE,
+};
 pub mod json;
 pub mod nr;
 pub mod signal;

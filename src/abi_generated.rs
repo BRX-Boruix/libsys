@@ -152,3 +152,11 @@ pub const FLOCK_CMD_UNLOCK: u64 = 2;
 
 pub const CONSOLE_PATH: &str = "/devices/console";
 pub const CONSOLES_DIR_PREFIX: &str = "/devices/consoles/";
+
+// ---------- 系统标识 token（卷标 / 3p 子目录 / 由它们派生的路径） ----------
+
+pub const DATA_VOLUME_LABEL: &str = "BORUIX_DATA";
+pub const THIRD_PARTY_SUBDIR: &str = "3p";
+pub const DATA_VOLUME_PATH: &str = "/volumes/BORUIX_DATA";
+pub const THIRD_PARTY_PATH: &str = "/volumes/BORUIX_DATA/3p";
+pub const WELCOME_PROBE: &str = "/volumes/BORUIX_DATA/welcome.txt";
