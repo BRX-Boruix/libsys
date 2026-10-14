@@ -141,3 +141,9 @@ pub const fn from_errno(e: i32) -> crate::error::Error {
         other => crate::error::Error::Unknown(other),
     }
 }
+
+// ---------- 跨 crate 数值（同一数值只在这里写一次） ----------
+
+pub const FLOCK_CMD_SHARED: u64 = 0;
+pub const FLOCK_CMD_EXCLUSIVE: u64 = 1;
+pub const FLOCK_CMD_UNLOCK: u64 = 2;

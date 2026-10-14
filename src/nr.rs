@@ -107,11 +107,11 @@ pub const SYS_STREAM_LOCK: u32 = crate::abi_generated::SYS_STREAM_LOCK;
 
 /// `SYS_STREAM_LOCK` 的 `a2` 命令字：取共享锁。双侧镜像（S13）：与内核
 /// `kernel::syscall::FLOCK_CMD_SHARED` 同值、注释互指。
-pub const FLOCK_CMD_SHARED: u64 = 0;
+pub const FLOCK_CMD_SHARED: u64 = crate::abi_generated::FLOCK_CMD_SHARED;
 /// `SYS_STREAM_LOCK` 的 `a2` 命令字：取独占锁（与任何锁冲突）。
-pub const FLOCK_CMD_EXCLUSIVE: u64 = 1;
+pub const FLOCK_CMD_EXCLUSIVE: u64 = crate::abi_generated::FLOCK_CMD_EXCLUSIVE;
 /// `SYS_STREAM_LOCK` 的 `a2` 命令字：释放本 owner 在该 inode 上的锁。
-pub const FLOCK_CMD_UNLOCK: u64 = 2;
+pub const FLOCK_CMD_UNLOCK: u64 = crate::abi_generated::FLOCK_CMD_UNLOCK;
 
 /// `stream_fstat(fd, out_buf_ptr) -> len`：按 fd 读元数据（收 `StatInfo` 定长结构）。
 pub const SYS_STREAM_FSTAT: u32 = crate::abi_generated::SYS_STREAM_FSTAT;
