@@ -65,62 +65,14 @@ pub enum Error {
 impl Error {
     /// 映射到 errno 数值（与内核 `Error::to_errno` 对齐，ADR-010）。
     pub fn to_errno(self) -> i32 {
-        match self {
-            Error::OutOfMemory => 12,   // ENOMEM
-            Error::InvalidParam => 22,  // EINVAL
-            Error::OutOfRange => 34,    // ERANGE
-            Error::NotFound => 2,       // ENOENT
-            Error::AlreadyExists => 17, // EEXIST
-            Error::NotSupported => 95,  // ENOTSUP
-            Error::WouldBlock => 11,    // EAGAIN
-        Error::Interrupted => 4,    // EINTR（ADR-051）
-            Error::NoSpace => 28,       // ENOSPC
-            Error::Io => 5,             // EIO
-            Error::NotDirectory => 20,  // ENOTDIR
-            Error::IsDirectory => 21,   // EISDIR
-            Error::PermissionDenied => 13, // EACCES
-            Error::BadAddress => 14,    // EFAULT
-            Error::NotEmpty => 39,      // ENOTEMPTY
-            Error::NameTooLong => 36,   // ENAMETOOLONG
-            Error::ArgListTooLong => 7, // E2BIG
-            Error::TooManySymlinks => 40, // ELOOP
-            Error::IllegalSeek => 29,   // ESPIPE
-            Error::ExecFormat => 8,     // ENOEXEC
-            Error::ReadOnly => 30,      // EROFS
-            Error::Corrupt => 117,      // EUCLEAN
-            Error::Busy => 16,          // EBUSY
-            Error::Unknown(e) => e,
-        }
+        // 数值的唯一事实源：tools/abi/constants.json（本函数只做委托）。
+        crate::abi_generated::to_errno(self)
     }
 
     /// 从 errno 数值映射回错误码（与内核 `Error::to_errno` 互逆）。
     pub fn from_errno(e: i32) -> Self {
-        match e {
-            12 => Error::OutOfMemory,   // ENOMEM
-            22 => Error::InvalidParam,  // EINVAL
-            34 => Error::OutOfRange,    // ERANGE
-            2 => Error::NotFound,       // ENOENT
-            17 => Error::AlreadyExists, // EEXIST
-            95 => Error::NotSupported,  // ENOTSUP
-            11 => Error::WouldBlock,    // EAGAIN
-        4 => Error::Interrupted,    // EINTR
-            28 => Error::NoSpace,       // ENOSPC
-            5 => Error::Io,             // EIO
-            20 => Error::NotDirectory,  // ENOTDIR
-            21 => Error::IsDirectory,   // EISDIR
-            13 => Error::PermissionDenied, // EACCES
-            14 => Error::BadAddress,    // EFAULT
-            39 => Error::NotEmpty,      // ENOTEMPTY
-            36 => Error::NameTooLong,   // ENAMETOOLONG
-            7 => Error::ArgListTooLong, // E2BIG
-            40 => Error::TooManySymlinks, // ELOOP
-            29 => Error::IllegalSeek,   // ESPIPE
-            8 => Error::ExecFormat,     // ENOEXEC
-            30 => Error::ReadOnly,      // EROFS
-            117 => Error::Corrupt,      // EUCLEAN
-            16 => Error::Busy,          // EBUSY
-            other => Error::Unknown(other),
-        }
+        // 双向映射与 to_errno 同源（生成物保证互逆）。
+        crate::abi_generated::from_errno(e)
     }
 }
 

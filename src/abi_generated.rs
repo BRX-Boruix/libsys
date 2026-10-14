@@ -6,6 +6,8 @@
 //!
 //! 手改本文件会被门禁发现；要改数值请改 JSON 再重新生成。
 
+// ---------- syscall 号 ----------
+
 pub const SYS_AUDIO_ATTACH: u32 = crate::nr::domain::AUDIO | 0x01; // 0xA1
 pub const SYS_AUDIO_COMMIT: u32 = crate::nr::domain::AUDIO | 0x04; // 0xA4
 pub const SYS_AUDIO_DETACH: u32 = crate::nr::domain::AUDIO | 0x02; // 0xA2
@@ -79,3 +81,63 @@ pub const SYS_VOLUME_LIST: u32 = crate::nr::domain::VOLUME | crate::nr::op::READ
 pub const SYS_VOLUME_MOUNT: u32 = crate::nr::domain::VOLUME | crate::nr::op::CREATE; // 0x61
 pub const SYS_VOLUME_UNMOUNT: u32 = crate::nr::domain::VOLUME | crate::nr::op::UNMOUNT; // 0x66
 pub const SYS_VOLUME_UPDATE: u32 = crate::nr::domain::VOLUME | crate::nr::op::WRITE; // 0x63
+
+// ---------- Error <-> errno（双向） ----------
+
+pub const fn to_errno(e: crate::error::Error) -> i32 {
+    match e {
+        crate::error::Error::OutOfMemory => 12, // ENOMEM
+        crate::error::Error::InvalidParam => 22, // EINVAL
+        crate::error::Error::OutOfRange => 34, // ERANGE
+        crate::error::Error::NotFound => 2, // ENOENT
+        crate::error::Error::AlreadyExists => 17, // EEXIST
+        crate::error::Error::NotSupported => 95, // ENOTSUP
+        crate::error::Error::WouldBlock => 11, // EAGAIN
+        crate::error::Error::Interrupted => 4, // EINTR
+        crate::error::Error::NoSpace => 28, // ENOSPC
+        crate::error::Error::Io => 5, // EIO
+        crate::error::Error::NotDirectory => 20, // ENOTDIR
+        crate::error::Error::IsDirectory => 21, // EISDIR
+        crate::error::Error::PermissionDenied => 13, // EACCES
+        crate::error::Error::BadAddress => 14, // EFAULT
+        crate::error::Error::NotEmpty => 39, // ENOTEMPTY
+        crate::error::Error::NameTooLong => 36, // ENAMETOOLONG
+        crate::error::Error::ArgListTooLong => 7, // E2BIG
+        crate::error::Error::TooManySymlinks => 40, // ELOOP
+        crate::error::Error::IllegalSeek => 29, // ESPIPE
+        crate::error::Error::ExecFormat => 8, // ENOEXEC
+        crate::error::Error::ReadOnly => 30, // EROFS
+        crate::error::Error::Corrupt => 117, // EUCLEAN
+        crate::error::Error::Busy => 16, // EBUSY
+        crate::error::Error::Unknown(e) => e,
+    }
+}
+
+pub const fn from_errno(e: i32) -> crate::error::Error {
+    match e {
+        12 => crate::error::Error::OutOfMemory, // ENOMEM
+        22 => crate::error::Error::InvalidParam, // EINVAL
+        34 => crate::error::Error::OutOfRange, // ERANGE
+        2 => crate::error::Error::NotFound, // ENOENT
+        17 => crate::error::Error::AlreadyExists, // EEXIST
+        95 => crate::error::Error::NotSupported, // ENOTSUP
+        11 => crate::error::Error::WouldBlock, // EAGAIN
+        4 => crate::error::Error::Interrupted, // EINTR
+        28 => crate::error::Error::NoSpace, // ENOSPC
+        5 => crate::error::Error::Io, // EIO
+        20 => crate::error::Error::NotDirectory, // ENOTDIR
+        21 => crate::error::Error::IsDirectory, // EISDIR
+        13 => crate::error::Error::PermissionDenied, // EACCES
+        14 => crate::error::Error::BadAddress, // EFAULT
+        39 => crate::error::Error::NotEmpty, // ENOTEMPTY
+        36 => crate::error::Error::NameTooLong, // ENAMETOOLONG
+        7 => crate::error::Error::ArgListTooLong, // E2BIG
+        40 => crate::error::Error::TooManySymlinks, // ELOOP
+        29 => crate::error::Error::IllegalSeek, // ESPIPE
+        8 => crate::error::Error::ExecFormat, // ENOEXEC
+        30 => crate::error::Error::ReadOnly, // EROFS
+        117 => crate::error::Error::Corrupt, // EUCLEAN
+        16 => crate::error::Error::Busy, // EBUSY
+        other => crate::error::Error::Unknown(other),
+    }
+}
