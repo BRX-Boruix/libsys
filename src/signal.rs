@@ -71,6 +71,16 @@ pub fn action(sig: u32, handler: u64, flags: u32) -> Result<u64, Error> {
     crate::syscall::call(SYS_SIGNAL_ACTION, [sig as u64, handler, flags as u64, 0, 0, 0])
 }
 
+/// `action_query(sig) -> 当前处置`：**纯查询**（不改动任何状态）。
+///
+/// 为什么单独一个函数、而不是 `action(sig, 0, 0)` 的别名：POSIX 的
+/// `sigaction(sig, NULL, &old)` 是**只读查询**，而 `action` 的语义是"设新返回旧"——
+/// 拿它当查询用会**真的把处置改成 SIG_DFL**。内核为此有独立的 `a4` 模式位
+/// （与 `SYS_SIGNAL_ALTSTACK` 同款）：查询与设置语义相反，不能共用一个编码。
+pub fn action_query(sig: u32) -> Result<u64, Error> {
+    crate::syscall::call(SYS_SIGNAL_ACTION, [sig as u64, 0, 0, 1, 0, 0])
+}
+
 /// `mask(how, set) -> 旧屏蔽集`：查/改屏蔽集（sigprocmask）。
 ///
 /// `how`：`SIGNAL_SET/BLOCK/UNBLOCK`；`set` 为屏蔽位图（bit63 须清零）。返回
