@@ -14,7 +14,7 @@
 /// 内核放行、随后在 loader 被 E2BIG 拒绝）。契约见 docs/abi/syscall-abi.md §4。
 /// 超出的命令行在 exec 时即以 E2BIG 拒绝，故用户态看到的串长必 ≤ 本值；
 /// 此常量用作防御性扫描边界（用户态与内核分属两个仓，无法共享字面量，故以文档 + 测试互锚）。
-pub const MAX_CMDLINE_BYTES: usize = 4096;
+pub const MAX_CMDLINE_BYTES: usize = crate::abi_generated::MAX_CMDLINE_BYTES;
 
 /// 词分隔符：空格与制表符（内核不定义分隔符语义，此处是用户态约定）。
 #[inline]

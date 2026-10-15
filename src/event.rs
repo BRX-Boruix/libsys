@@ -16,16 +16,16 @@
 use crate::error::Error;
 
 /// 事件记录定长（ADR-047 §2.1）。
-pub const EVENT_RECORD_SIZE: usize = 16;
+pub const EVENT_RECORD_SIZE: usize = crate::abi_generated::EVENT_RECORD_SIZE;
 
 /// 事件 kind：键按下 / 键释放（与内核 keyboard 常量镜像）。
-pub const EVENT_KIND_KEY_DOWN: u8 = 1;
-pub const EVENT_KIND_KEY_UP: u8 = 2;
+pub const EVENT_KIND_KEY_DOWN: u8 = crate::abi_generated::EVENT_KIND_KEY_DOWN;
+pub const EVENT_KIND_KEY_UP: u8 = crate::abi_generated::EVENT_KIND_KEY_UP;
 
 /// flags.bit0：E0 扩展前缀。
-pub const EVENT_FLAG_E0: u8 = 1 << 0;
+pub const EVENT_FLAG_E0: u8 = crate::abi_generated::EVENT_FLAG_E0;
 /// flags.bit1：时间戳不可得标注（timestamp 恒 0 且带此位）。
-pub const EVENT_FLAG_NO_TIME: u8 = 1 << 1;
+pub const EVENT_FLAG_NO_TIME: u8 = crate::abi_generated::EVENT_FLAG_NO_TIME;
 
 /// 一条已解析的事件记录（ADR-047 §2.1 布局的 Rust 视图）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

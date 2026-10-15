@@ -11,10 +11,10 @@
 //! "进程从哪里被 exec 起来"因此需要独立来源——AT_EXECFN（与 Linux 同值 31）。
 
 /// auxv 槽类型：可执行文件名（与 Linux 的 AT_EXECFN 同值 31）。
-pub const AT_EXECFN: u64 = 31;
+pub const AT_EXECFN: u64 = crate::abi_generated::AT_EXECFN;
 
 /// auxv 终结槽类型（值恒 0）。
-pub const AT_NULL: u64 = 0;
+pub const AT_NULL: u64 = crate::abi_generated::AT_NULL;
 
 /// auxv 对数上限的**镜像常量**：内核侧单点在 loader 的同一常量族。
 ///

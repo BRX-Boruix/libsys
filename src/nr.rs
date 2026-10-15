@@ -70,7 +70,7 @@ pub const STREAM_OFFSET_CURRENT: u64 = u64::MAX;
 ///
 /// 与内核 `STREAM_READ_NONBLOCK` 必须**逐位一致**（PRE-12：内核↔libsys
 /// 同步改动）。改这里就必须同时改那里，且两侧都有测试钉住取值。
-pub const STREAM_READ_NONBLOCK: u64 = 1;
+pub const STREAM_READ_NONBLOCK: u64 = crate::abi_generated::STREAM_READ_NONBLOCK;
 
 /// `SYS_STREAM_READ` 的 `a5` 标志位：**预览**（不消费）。
 ///
@@ -85,7 +85,7 @@ pub const STREAM_READ_NONBLOCK: u64 = 1;
 /// 若只有 NONBLOCK，探键仍必须**取走**字节才能知道它是不是 `^C`。
 /// 那么属于子进程的普通按键就会被静默丢弃（实测：
 /// `/programs/spinburn.elf` 变成 `/prams/spinburn.elf`，`o`/`g` 丢失）。
-pub const STREAM_READ_PEEK: u64 = 2;
+pub const STREAM_READ_PEEK: u64 = crate::abi_generated::STREAM_READ_PEEK;
 
 // ---------- 1. STREAM Domain (0x10) ----------
 /// `stream_create(path_ptr, flags, mode) -> handle`：打开或创建流/文件。
@@ -144,7 +144,7 @@ pub const SYS_MEMORY_MAP: u32 = crate::abi_generated::SYS_MEMORY_MAP;
 /// `SYS_MEMORY_MAP` 的 `flags` 位：新建共享内存对象并映射（ADR-014 §4.2，旧
 /// `SYS_SHM_CREATE` 合并路径；`shared_id` 传 0 走本路径）。`shared_id != 0`
 /// 时映射既有共享对象（旧 `SYS_SHM_MAP` 合并）。
-pub const MEM_MAP_SHARED: u64 = 1 << 0;
+pub const MEM_MAP_SHARED: u64 = crate::abi_generated::MEM_MAP_SHARED;
 /// `memory_query(addr, out_ptr) -> 0`：查询 `addr` 所在 4KB 页属性，把 u64
 /// 位图写入 `out_ptr`（须为可写用户缓冲）。KM2：内核侧此前缺席本调用号，
 /// 现已接通；位值与内核 `sys_memory_query` 双侧定义、注释互指。
@@ -212,7 +212,7 @@ pub const SYS_TASK_IDENTITY_SET: u32 = crate::abi_generated::SYS_TASK_IDENTITY_S
 
 /// `SYS_TASK_IDENTITY_SET` 的保留参数（`a3`）唯一合法取值。
 /// 用命名常量而非字面量 0，使「保留位」是一处成文语义而非魔法值（S13）。
-pub const IDENTITY_SET_RESERVED_NONE: u64 = 0;
+pub const IDENTITY_SET_RESERVED_NONE: u64 = crate::abi_generated::IDENTITY_SET_RESERVED_NONE;
 
 /// `groups_set(ptr, count, _reserved, mode) -> 0`：设置调用进程组的**补充组集合**。
 /// 组表 `/config/groups.json` 由用户态解析后经本调用装入身份——内核不解析组表
@@ -237,20 +237,20 @@ pub const SYS_TASK_GROUPS_GET: u32 = crate::abi_generated::SYS_TASK_GROUPS_GET;
 pub const SYS_TASK_NICE: u32 = crate::abi_generated::SYS_TASK_NICE;
 
 /// [`SYS_TASK_NICE`] 的 `a1`：查询。
-pub const NICE_GET: u64 = 0;
+pub const NICE_GET: u64 = crate::abi_generated::NICE_GET;
 /// [`SYS_TASK_NICE`] 的 `a1`：设置。
-pub const NICE_SET: u64 = 1;
+pub const NICE_SET: u64 = crate::abi_generated::NICE_SET;
 /// 返回值偏移：`nice + NICE_BIAS`（与内核同值，S13）。
-pub const NICE_BIAS: i32 = 20;
+pub const NICE_BIAS: i32 = crate::abi_generated::NICE_BIAS;
 
 /// `SYS_TASK_GROUPS_SET` 的保留参数（`a3`）唯一合法取值。
-pub const GROUPS_SET_RESERVED_NONE: u64 = 0;
+pub const GROUPS_SET_RESERVED_NONE: u64 = crate::abi_generated::GROUPS_SET_RESERVED_NONE;
 
 /// `SYS_TASK_GROUPS_SET` 的 `a4`：以给定集合**整体替换**当前补充组。
-pub const GROUPS_SET_REPLACE: u64 = 0;
+pub const GROUPS_SET_REPLACE: u64 = crate::abi_generated::GROUPS_SET_REPLACE;
 
 /// `SYS_TASK_GROUPS_SET` 的 `a4`：清空补充组（此时 `a1`/`a2` 必须为 0）。
-pub const GROUPS_SET_CLEAR: u64 = 1;
+pub const GROUPS_SET_CLEAR: u64 = crate::abi_generated::GROUPS_SET_CLEAR;
 
 /// 补充组集合上限（与内核 `task::Groups::MAX` 同值镜像，PRE-12 纪律）。
 pub const GROUPS_MAX: usize = 8;
@@ -261,13 +261,13 @@ pub const SYS_TASK_DERIVE: u32 = crate::abi_generated::SYS_TASK_DERIVE;
 /// [`SYS_TASK_DERIVE`] 的 `flags` 保留值：无标志（首期唯一合法取值）。
 ///
 /// 与内核 `kernel::syscall::DERIVE_FLAGS_NONE` 同值、语义互指（S13 双侧镜像）。
-pub const DERIVE_FLAGS_NONE: u64 = 0;
+pub const DERIVE_FLAGS_NONE: u64 = crate::abi_generated::DERIVE_FLAGS_NONE;
 /// `entry_create(path_ptr, kind, perm) -> 0`：创建目录或特殊节点。
 pub const SYS_ENTRY_CREATE: u32 = crate::abi_generated::SYS_ENTRY_CREATE;
 /// ENTRY_CREATE 的 kind：创建目录（ADR-014 §4.4 `kind=DIR/DIRECTORY`）。
-pub const ENTRY_KIND_DIRECTORY: u64 = 0;
+pub const ENTRY_KIND_DIRECTORY: u64 = crate::abi_generated::ENTRY_KIND_DIRECTORY;
 /// ENTRY_CREATE 的 kind：创建普通文件。
-pub const ENTRY_KIND_FILE: u64 = 1;
+pub const ENTRY_KIND_FILE: u64 = crate::abi_generated::ENTRY_KIND_FILE;
 /// `entry_read(path_ptr, json_buf_ptr, cap) -> len`：读取目录项列表（直接填充 JSON）。
 pub const SYS_ENTRY_READ: u32 = crate::abi_generated::SYS_ENTRY_READ;
 /// `entry_update(path_ptr, new_path_ptr, flags) -> 0`：移动/重命名/修改元数据。
@@ -291,26 +291,26 @@ pub const SYS_ENTRY_LINK: u32 = crate::abi_generated::SYS_ENTRY_LINK;
 pub const SYS_ENTRY_READLINK: u32 = crate::abi_generated::SYS_ENTRY_READLINK;
 
 /// SYS_ENTRY_READ 动作编码（a4 区分）：0 = 读取目录（默认）。
-pub const ENTRY_READ_READDIR: u64 = 0;
+pub const ENTRY_READ_READDIR: u64 = crate::abi_generated::ENTRY_READ_READDIR;
 /// SYS_ENTRY_READ 动作编码（a4 区分）：1 = stat（解析路径返回元数据结构）。
-pub const ENTRY_READ_STAT: u64 = 1;
+pub const ENTRY_READ_STAT: u64 = crate::abi_generated::ENTRY_READ_STAT;
 /// SYS_ENTRY_READ 动作编码（a4 区分）：2 = 读取显式 ACE 列表（A2-6 / ADR-040 §3.5.1 G4）。
 /// a1=path_ptr，a2=out_ptr（收 `[AceWire; cap]`），a3=cap（0 合法＝探测条数）。
 /// 返回实际条数；节点 ACE 数 > cap 且 cap != 0 时如实 `NoSpace`（**不截断**）。
-pub const ENTRY_READ_ACES: u64 = 2;
+pub const ENTRY_READ_ACES: u64 = crate::abi_generated::ENTRY_READ_ACES;
 
 /// SYS_ENTRY_UPDATE 动作编码（a4 区分）：0 = rename（默认）。
-pub const ENTRY_UPDATE_RENAME: u64 = 0;
+pub const ENTRY_UPDATE_RENAME: u64 = crate::abi_generated::ENTRY_UPDATE_RENAME;
 /// SYS_ENTRY_UPDATE 动作编码（a4 区分）：1 = chmod（设置权限）。
-pub const ENTRY_UPDATE_CHMOD: u64 = 1;
+pub const ENTRY_UPDATE_CHMOD: u64 = crate::abi_generated::ENTRY_UPDATE_CHMOD;
 /// SYS_ENTRY_UPDATE 动作编码（a4 区分）：2 = chown（易主，A1-7）。
 /// a1=path_ptr，a2=uid，a3=gid（ADR-014 §4.4「更新节点元数据」动词；
 /// 定长寄存器参数，无用户指针拷贝面）。
-pub const ENTRY_UPDATE_CHOWN: u64 = 2;
+pub const ENTRY_UPDATE_CHOWN: u64 = crate::abi_generated::ENTRY_UPDATE_CHOWN;
 /// SYS_ENTRY_UPDATE 动作编码（a4 区分）：3 = 设置显式 ACE 列表（A2-6 / G4）。
 /// a1=path_ptr，a2=aces_ptr（`[AceWire; count]`），a3=count（0 即清空）。
 /// **整表替换**；只改显式 ACE，classic/属主/门禁位原样。
-pub const ENTRY_UPDATE_SET_ACES: u64 = 3;
+pub const ENTRY_UPDATE_SET_ACES: u64 = crate::abi_generated::ENTRY_UPDATE_SET_ACES;
 
 // ---------- 5. DEVICE Domain (0x50, UIO Sandboxing) ----------
 /// `driver_register(name_ptr, len) -> uio_id`：注册用户态驱动。

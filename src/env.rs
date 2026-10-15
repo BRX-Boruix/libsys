@@ -15,7 +15,7 @@
 ///
 /// 用户态与内核分属两个仓，无法共享字面量，故以文档 + 两侧测试互锚。用作**防御性扫描
 /// 边界**：超过它仍未见到 NULL 终结符即判定契约被破坏，返回 None（不静默截断）。
-pub const MAX_ENV_COUNT: usize = 64;
+pub const MAX_ENV_COUNT: usize = crate::abi_generated::MAX_ENV_COUNT;
 
 /// 由 argc/argv 取 envp 切片（不含 NULL 终结槽）；契约被破坏时返回 None。
 ///

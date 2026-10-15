@@ -18,33 +18,33 @@ use crate::nr::{
 // ---------- 信号号常量（与内核 task::signals 对齐，S13） ----------
 
 /// SIGINT：终端中断（键盘 Ctrl-C）。
-pub const SIGINT: u32 = 2;
+pub const SIGINT: u32 = crate::abi_generated::SIGINT;
 /// SIGILL：非法指令（#UD 等）。
-pub const SIGILL: u32 = 4;
+pub const SIGILL: u32 = crate::abi_generated::SIGILL;
 /// SIGBUS：总线错误（预留）。
-pub const SIGBUS: u32 = 7;
+pub const SIGBUS: u32 = crate::abi_generated::SIGBUS;
 /// SIGFPE：算术/浮点异常（#DE 除零等）。
-pub const SIGFPE: u32 = 8;
+pub const SIGFPE: u32 = crate::abi_generated::SIGFPE;
 /// SIGKILL：强制终止（不可捕获、不可屏蔽）。
-pub const SIGKILL: u32 = 9;
+pub const SIGKILL: u32 = crate::abi_generated::SIGKILL;
 /// SIGUSR1：应用自定义信号 1。
-pub const SIGUSR1: u32 = 10;
+pub const SIGUSR1: u32 = crate::abi_generated::SIGUSR1;
 /// SIGSEGV：段错误（#PF / #GP / #SS / #NP / #AC）。
-pub const SIGSEGV: u32 = 11;
+pub const SIGSEGV: u32 = crate::abi_generated::SIGSEGV;
 /// SIGUSR2：应用自定义信号 2。
-pub const SIGUSR2: u32 = 12;
+pub const SIGUSR2: u32 = crate::abi_generated::SIGUSR2;
 /// SIGPIPE：写已关闭管道。
-pub const SIGPIPE: u32 = 13;
+pub const SIGPIPE: u32 = crate::abi_generated::SIGPIPE;
 /// SIGALRM：定时器到期。
-pub const SIGALRM: u32 = 14;
+pub const SIGALRM: u32 = crate::abi_generated::SIGALRM;
 /// SIGTERM：兜底终止。
-pub const SIGTERM: u32 = 15;
+pub const SIGTERM: u32 = crate::abi_generated::SIGTERM;
 /// SIGCHLD：子进程状态变更。
-pub const SIGCHLD: u32 = 17;
+pub const SIGCHLD: u32 = crate::abi_generated::SIGCHLD;
 /// SIGCONT：恢复暂停的进程（预留）。
-pub const SIGCONT: u32 = 18;
+pub const SIGCONT: u32 = crate::abi_generated::SIGCONT;
 /// SIGSTOP：暂停进程（预留，首期 NotSupported）。
-pub const SIGSTOP: u32 = 19;
+pub const SIGSTOP: u32 = crate::abi_generated::SIGSTOP;
 
 // ---------- sigaction 处置哨兵（ADR-034 §3.3） ----------
 

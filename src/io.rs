@@ -167,7 +167,7 @@ pub struct Permissions {
 /// chmod 通道唯一写入门径：`chmod(path, classic | GATE_SYSTEM_BIT)`。
 /// POSIX `mode_t` 语义只占 classic 9 位（0o777），bit9 仅限显式声明的
 /// 门禁写入（如 shell 驱动安装的 System-only 收紧）。
-pub const GATE_SYSTEM_BIT: u32 = 1 << 9;
+pub const GATE_SYSTEM_BIT: u32 = crate::abi_generated::GATE_SYSTEM_BIT;
 
 impl Permissions {
     pub const fn all() -> Self {
@@ -352,10 +352,10 @@ pub struct AceWire {
 }
 
 /// 主体类别编码（与内核同名常量同值，S13 单点对齐）。
-pub const ACE_PRINCIPAL_OWNER: u32 = 0;
-pub const ACE_PRINCIPAL_NAMED_UID: u32 = 1;
-pub const ACE_PRINCIPAL_NAMED_GID: u32 = 2;
-pub const ACE_PRINCIPAL_OTHER: u32 = 3;
+pub const ACE_PRINCIPAL_OWNER: u32 = crate::abi_generated::ACE_PRINCIPAL_OWNER;
+pub const ACE_PRINCIPAL_NAMED_UID: u32 = crate::abi_generated::ACE_PRINCIPAL_NAMED_UID;
+pub const ACE_PRINCIPAL_NAMED_GID: u32 = crate::abi_generated::ACE_PRINCIPAL_NAMED_GID;
+pub const ACE_PRINCIPAL_OTHER: u32 = crate::abi_generated::ACE_PRINCIPAL_OTHER;
 
 /// 权限位编码（`AceWire::perms`）。
 pub const ACE_PERM_READ: u32 = 1;
@@ -363,10 +363,10 @@ pub const ACE_PERM_WRITE: u32 = 2;
 pub const ACE_PERM_EXECUTE: u32 = 4;
 
 /// 单条 wire ACE 的字节大小（`AceWire` 定长；与内核 `ACE_WIRE_SIZE` 同值）。
-pub const ACE_WIRE_SIZE: usize = 24;
+pub const ACE_WIRE_SIZE: usize = crate::abi_generated::ACE_WIRE_SIZE;
 
 /// 一次 ACE 传输的最大条数（与内核 `ACE_WIRE_MAX` 同值）。
-pub const ACE_WIRE_MAX: usize = 64;
+pub const ACE_WIRE_MAX: usize = crate::abi_generated::ACE_WIRE_MAX;
 
 impl AceWire {
     /// 构造 Allow/Deny ACE 的便捷形态（`reserved` 恒 0）。

@@ -7,11 +7,11 @@ use crate::nr::{
 };
 
 /// mmap 的 prot 位（3P4-4）。**与内核 mm::user_space 的编号同一事实**（两侧互指）。
-pub const PROT_READ: u64 = 1 << 0;
-pub const PROT_WRITE: u64 = 1 << 1;
-pub const PROT_EXEC: u64 = 1 << 2;
+pub const PROT_READ: u64 = crate::abi_generated::PROT_READ;
+pub const PROT_WRITE: u64 = crate::abi_generated::PROT_WRITE;
+pub const PROT_EXEC: u64 = crate::abi_generated::PROT_EXEC;
 /// prot == 0 的历史语义 = RW（早期 wire 未用该参数）。
-pub const PROT_DEFAULT: u64 = PROT_READ | PROT_WRITE;
+pub const PROT_DEFAULT: u64 = crate::abi_generated::PROT_DEFAULT;
 
 /// `mmap(size)`：预留一段按需分页区（默认权限 RW），返回起始地址。
 pub fn mmap(size: u64) -> Result<u64, Error> {
