@@ -48,6 +48,26 @@ pub fn info(what: u64) -> Result<u64, Error> {
             // SysFS 不可用或解析失败：宁缺毋假（ADR-027），返回错误由调用方兜底。
             Err(Error::NotFound)
         }
+        INFO_TICK_HZ => {
+            // 调度 tick 频率（Hz）：真值来自内核 `/system/info/kernel` 的
+            // `sched_tick_hz`（`arch_x86_64::lapic::SCHED_TICK_HZ`）。
+            // **不是时钟计数器频率**——那是另一个量（见报告登记项⑪）。
+            if let Ok(data) = crate::io::read_to_end("/system/info/kernel") {
+                if let Ok(text) = core::str::from_utf8(&data) {
+                    if let Some(pos) = text.find("\"sched_tick_hz\":") {
+                        let rest = &text[pos + 16..];
+                        let num_str: alloc::string::String =
+                            rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        if let Ok(n) = num_str.parse::<u64>() {
+                            if n > 0 {
+                                return Ok(n);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(Error::NotFound)
+        }
         _ => Err(Error::NotSupported),
     }
 }

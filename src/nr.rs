@@ -418,3 +418,5 @@ pub const PROG_SHELL: u64 = 1;
 pub const INFO_VERSION: u64 = 0;
 pub const INFO_BOOT_MS: u64 = 1;
 pub const INFO_CPU_COUNT: u64 = 2;
+/// 时钟频率 Hz（真值：内核 `/system/info/kernel` 的 `tick_hz`，登记项⑪）。
+pub const INFO_TICK_HZ: u64 = 3;
