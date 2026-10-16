@@ -10,12 +10,17 @@ use crate::nr::{
 pub const PROT_READ: u64 = crate::abi_generated::PROT_READ;
 pub const PROT_WRITE: u64 = crate::abi_generated::PROT_WRITE;
 pub const PROT_EXEC: u64 = crate::abi_generated::PROT_EXEC;
-/// prot == 0 的历史语义 = RW（早期 wire 未用该参数）。
+/// 显式请求「读 + 写」（3 = READ|WRITE）。**要 RW 就传它**。
+///
+/// 注意：`prot == 0` 现在是 POSIX 的 **PROT_NONE**（存在但不可访问，登记项⑥），
+/// **不再是**「默认 RW」——此前传 0 表示 RW 的历史语义已废。
 pub const PROT_DEFAULT: u64 = crate::abi_generated::PROT_DEFAULT;
 
 /// `mmap(size)`：预留一段按需分页区（默认权限 RW），返回起始地址。
 pub fn mmap(size: u64) -> Result<u64, Error> {
-    crate::syscall::call(SYS_MEMORY_MAP, [size, 0, 0, 0, 0, 0])
+    // **显式传 PROT_DEFAULT**：登记项⑥ 之后 `prot == 0` 是 PROT_NONE，
+    // 若仍传 0，调用方拿到的是**不可访问**的映射（本函数承诺的是 RW）。
+    crate::syscall::call(SYS_MEMORY_MAP, [size, 0, 0, PROT_DEFAULT, 0, 0])
 }
 
 /// `mmap_prot(size, prot)`：带权限的匿名映射（3P4-4）。
@@ -29,8 +34,8 @@ pub fn mmap_prot(size: u64, prot: u64) -> Result<u64, Error> {
 /// `mprotect(addr, len, prot)`：修改已映射内存权限（MEMORY 域 0x25，3P4-5）。
 ///
 /// W^X 由内核**单点**拒绝（写+执行同页 → InvalidParam），本层不预检（S13）。
-/// `prot == 0`（POSIX PROT_NONE）当前如实 NotSupported——抽象层没有「存在但不可访问」
-/// 的权限表示，内核拒绝而非假装成只读。
+/// `prot == 0`（POSIX PROT_NONE）**已支持**（登记项⑥）：内核把映射保留为
+/// present 但不带 user 位 ⇒ 用户态任何访问触发保护性 #PF（SIGSEGV）。
 pub fn mprotect(addr: u64, len: u64, prot: u64) -> Result<(), Error> {
     crate::syscall::call(SYS_MEMORY_PROTECT, [addr, len, prot, 0, 0, 0]).map(|_| ())
 }
