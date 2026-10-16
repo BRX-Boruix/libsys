@@ -109,6 +109,10 @@ pub const SYS_STREAM_LOCK: u32 = crate::abi_generated::SYS_STREAM_LOCK;
 /// 返回新位置；不可定位的 fd ⇒ `IllegalSeek`（用户态映射 ESPIPE），且不改变任何状态。
 /// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_SEEK` 同值。
 pub const SYS_STREAM_SEEK: u32 = crate::abi_generated::SYS_STREAM_SEEK;
+/// `SYS_STREAM_FLAGS`：查询/设置**每-fd 标志**（登记项③，`fcntl(F_GETFD/F_SETFD)` 的原语）。
+/// `a1` = fd、`a2` = mode（0 查 / 1 设）、`a3` = 标志位（只认 `FD_CLOEXEC`）。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_FLAGS` 同值。
+pub const SYS_STREAM_FLAGS: u32 = crate::abi_generated::SYS_STREAM_FLAGS;
 
 /// `SYS_STREAM_LOCK` 的 `a2` 命令字：取共享锁。双侧镜像（S13）：与内核
 /// `kernel::syscall::FLOCK_CMD_SHARED` 同值、注释互指。

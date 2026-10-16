@@ -627,6 +627,20 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
     .map(|_| ())
 }
 
+/// `fd_flags(fd)`：查询**每-fd 标志**（POSIX `fcntl(F_GETFD)`；登记项③）。
+///
+/// 目前唯一的标志位是 `FD_CLOEXEC`（值与 libc 的 C `#define` 同源）。坏 fd ⇒ `BadFd`。
+pub fn fd_flags(fd: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_STREAM_FLAGS, [fd, 0, 0, 0, 0, 0])
+}
+
+/// `fd_set_flags(fd, flags)`：设置**每-fd 标志**（POSIX `fcntl(F_SETFD)`；登记项③）。
+///
+/// `flags` 只认 `FD_CLOEXEC`；**未知位如实 `InvalidParam`**（不静默丢弃——与 prot 同一纪律）。
+pub fn fd_set_flags(fd: u64, flags: u64) -> Result<(), Error> {
+    crate::syscall::call(SYS_STREAM_FLAGS, [fd, 1, flags, 0, 0, 0]).map(|_| ())
+}
+
 /// `lseek(fd, offset, whence)`：调整**打开文件描述**的读写位置，返回新位置（登记项⑨）。
 ///
 /// `whence` 用 POSIX 值：0 = SEEK_SET、1 = SEEK_CUR、2 = SEEK_END（与内核 wire 一致）。
