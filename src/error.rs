@@ -62,6 +62,9 @@ pub enum Error {
     /// （对只读 fd 写、对只写 fd 读）。与 `PermissionDenied`（节点权限，EACCES）不同：
     /// 这是「这个 fd 本身不适用于本次操作」，换 fd 才行。
     BadFd,
+    /// **没有可等待的子进程**（ECHILD）：`wait`/`waitpid` 在「无子进程」「指定 pid 不是
+    /// 本进程的子进程」「该子进程已被收尸」三种情形下的 POSIX 规定码（登记项⑧）。
+    NoChild,
     /// 未知错误码（内核返回了 libsys 未识别的 errno）。
     Unknown(i32),
 }
@@ -107,6 +110,7 @@ impl fmt::Display for Error {
             Error::Corrupt => f.write_str("filesystem structure corrupt"),
             Error::Busy => f.write_str("resource busy"),
             Error::BadFd => f.write_str("bad file descriptor"),
+            Error::NoChild => f.write_str("no child processes"),
             Error::Unknown(_e) => f.write_str("unknown error"),
         }
     }

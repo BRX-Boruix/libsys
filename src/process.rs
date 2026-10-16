@@ -404,15 +404,11 @@ pub struct WaitResult {
 }
 
 /// `waitpid_any()`：等待任意直接子进程退出，返回被收尸子进程的 `(pid, code)`。
-/// 阻塞当前进程直到任一子进程退出。无子进程时返回 `Err(NotFound)`。
+/// 阻塞当前进程直到任一子进程退出。无子进程时返回 `Err(NoChild)`（POSIX 的 ECHILD）。
 /// 内核交付协议：rax=退出码、r10=pid（同步路径经 aux_pid、阻塞路径经
 /// saved.r10，两条路径一致），故用 `invoke_capture_r10` 同时取回两者。
 pub fn waitpid_any() -> Result<WaitResult, Error> {
-    let (ret, r10) = crate::syscall::invoke_capture_r10(SYS_TASK_WAIT, WAIT_ANY, 0, 0, 0, 0, 0);
-    if ret & (1u64 << 63) != 0 {
-        return Err(crate::error::Error::from_errno((ret as i64).wrapping_neg() as i32));
-    }
-    Ok(WaitResult { pid: r10, code: ret })
+    waitpid(WAIT_ANY, 0)
 }
 
 /// `waitpid_any_timeout(timeout_ns)`：**有界**等待任意直接子进程退出（§6.11 裁决 B）。
@@ -421,7 +417,7 @@ pub fn waitpid_any() -> Result<WaitResult, Error> {
 /// * 子进程在期限内退出 → `Ok(WaitResult { pid, code })`（与 [`waitpid_any`] 同语义）；
 /// * **期限内没等到** → `Err(WouldBlock)`——**如实**告知「还没等到、可重试」，
 ///   **绝不**编造一个退出码（S09：宁可如实报未等到，也不给会误导的假成功）；
-/// * 无子进程/目标非法 → `Err(NotFound)`。
+/// * 无子进程/目标非法 → `Err(NoChild)`（POSIX 的 ECHILD，登记项⑧）。
 ///
 /// ## 为什么需要它
 ///
@@ -436,15 +432,19 @@ pub fn waitpid_any() -> Result<WaitResult, Error> {
 /// 调用方须自行保存「我在等谁」并重复调用（本函数内部即 waitpid_any 语义，
 /// 故可安全重试）。
 pub fn waitpid_any_timeout(timeout_ns: u64) -> Result<WaitResult, Error> {
-    let (ret, r10) = crate::syscall::invoke_capture_r10(
-        SYS_TASK_WAIT,
-        WAIT_ANY,
-        timeout_ns,
-        0,
-        0,
-        0,
-        0,
-    );
+    waitpid(WAIT_ANY, timeout_ns)
+}
+
+/// `waitpid(pid, timeout_ns)`：等待**指定**直接子进程（`pid == WAIT_ANY` ⇒ 任意子进程）。
+///
+/// 语义忠实性审查登记项⑧：内核的 `SYS_TASK_WAIT` **本来就**接受具体 pid
+/// （`task::scheduler::waitpid_inner` 的单目标分支），只是本层此前只暴露 `WAIT_ANY`，
+/// 于是 libc 的 `waitpid(pid)` 只能退化成「等任意子」——那会收走**别的**子进程。
+///
+/// * `timeout_ns == 0` ⇒ 无限等待；`> 0` ⇒ 有界（超时 `Err(WouldBlock)`）；
+/// * 无该子进程（不存在 / 不是亲生子 / 已被收尸）⇒ `Err(NoChild)`（POSIX 的 ECHILD）。
+pub fn waitpid(pid: u64, timeout_ns: u64) -> Result<WaitResult, Error> {
+    let (ret, r10) = crate::syscall::invoke_capture_r10(SYS_TASK_WAIT, pid, timeout_ns, 0, 0, 0, 0);
     if ret & (1u64 << 63) != 0 {
         return Err(crate::error::Error::from_errno((ret as i64).wrapping_neg() as i32));
     }
