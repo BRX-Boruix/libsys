@@ -27,7 +27,9 @@
 extern crate alloc;
 
 // 跨边界常量的**生成物**（源：tools/abi/constants.json）。数值勿手改——门禁会比对。
-mod abi_generated;
+// 语义忠实性审查登记项⑪：libc 的 sysconf 需要读跨边界 wire 常量
+// （如 MAX_CMDLINE_BYTES），故与内核 klib 侧同款改为 pub。
+pub mod abi_generated;
 
 pub mod cmdline;
 // 3P4-2（ABI v2）：入口参数块在 argv 之后携带 envp；定位与遍历的用户态单点定义。
