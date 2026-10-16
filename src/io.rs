@@ -627,15 +627,45 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
     .map(|_| ())
 }
 
-/// `unlink(path)`：删除文件或目录。
+/// `unlink(path)`：删除**非目录**的目录项（POSIX unlink）。
+///
+/// **类型判定由内核删除原语内建**（语义忠实性审查登记项⑤）：模式 = `FileOnly`，
+/// 目标是目录 ⇒ 内核在删除临界区内判定并返回 `PermissionDenied`（EPERM）。
+/// 本层**不再**先 lstat 再删（那有 TOCTOU 窗口）。
 pub fn unlink(path: &str) -> Result<(), Error> {
+    delete(path, DELETE_MODE_FILE_ONLY)
+}
+
+/// `rmdir(path)`：删除**空目录**（POSIX rmdir）。
+///
+/// 模式 = `DirOnly`：目标非目录 ⇒ 内核返回 `NotDirectory`（ENOTDIR）；
+/// 目录非空 ⇒ `NotEmpty`（ENOTEMPTY）。同样**不再**先 lstat。
+pub fn rmdir(path: &str) -> Result<(), Error> {
+    delete(path, DELETE_MODE_DIR_ONLY)
+}
+
+/// `remove(path)`：删除文件或空目录（POSIX remove）。
+///
+/// 模式 = `Any`：是目录就按目录删（仍判空），否则按文件删——这正是 POSIX `remove` 的语义，
+/// 故它**不需要**类型判定，也**不该**复用 `unlink`（那会把目录拒掉）。
+pub fn remove(path: &str) -> Result<(), Error> {
+    delete(path, DELETE_MODE_ANY)
+}
+
+/// `SYS_ENTRY_DELETE` 的 a2 模式值（与内核 `sys_unlink` 的分档一致，S13 单点）。
+const DELETE_MODE_ANY: u64 = 0;
+const DELETE_MODE_FILE_ONLY: u64 = 1;
+const DELETE_MODE_DIR_ONLY: u64 = 2;
+
+/// 删除公共实现：模式经 a2 传给内核，由节点实现在**目录锁内**判定类型。
+fn delete(path: &str, mode: u64) -> Result<(), Error> {
     if path.len() >= 256 {
         let mut null_terminated = Vec::with_capacity(path.len() + 1);
         null_terminated.extend_from_slice(path.as_bytes());
         null_terminated.push(0);
         return crate::syscall::call(
             SYS_ENTRY_DELETE,
-            [null_terminated.as_ptr() as u64, 0, 0, 0, 0, 0],
+            [null_terminated.as_ptr() as u64, mode, 0, 0, 0, 0],
         )
         .map(|_| ());
     }
@@ -643,7 +673,7 @@ pub fn unlink(path: &str) -> Result<(), Error> {
     buf[..path.len()].copy_from_slice(path.as_bytes());
     buf[path.len()] = 0;
 
-    crate::syscall::call(SYS_ENTRY_DELETE, [buf.as_ptr() as u64, 0, 0, 0, 0, 0]).map(|_| ())
+    crate::syscall::call(SYS_ENTRY_DELETE, [buf.as_ptr() as u64, mode, 0, 0, 0, 0]).map(|_| ())
 }
 
 /// 重命名（SYS_ENTRY_UPDATE rename 动作）：同目录内将 old 改名为 new。

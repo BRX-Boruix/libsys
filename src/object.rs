@@ -93,9 +93,9 @@ impl Vfs {
         crate::io::mkdir(path, Permissions::all())
     }
 
-    /// 删除文件或空目录。
+    /// 删除文件或空目录（语义同 POSIX `remove` ⇒ 模式 = Any）。
     pub fn unlink(path: &str) -> Result<(), Error> {
-        crate::io::unlink(path)
+        crate::io::remove(path)
     }
 }
 

@@ -65,6 +65,9 @@ pub enum Error {
     /// **没有可等待的子进程**（ECHILD）：`wait`/`waitpid` 在「无子进程」「指定 pid 不是
     /// 本进程的子进程」「该子进程已被收尸」三种情形下的 POSIX 规定码（登记项⑧）。
     NoChild,
+    /// **操作不允许**（EPERM）：与 [`Error::PermissionDenied`]（EACCES）的分界见内核侧同名变体
+    /// （登记项⑤：`unlink(<目录>)` 的 POSIX 规定码）。
+    NotPermitted,
     /// 未知错误码（内核返回了 libsys 未识别的 errno）。
     Unknown(i32),
 }
@@ -111,6 +114,7 @@ impl fmt::Display for Error {
             Error::Busy => f.write_str("resource busy"),
             Error::BadFd => f.write_str("bad file descriptor"),
             Error::NoChild => f.write_str("no child processes"),
+            Error::NotPermitted => f.write_str("operation not permitted"),
             Error::Unknown(_e) => f.write_str("unknown error"),
         }
     }
