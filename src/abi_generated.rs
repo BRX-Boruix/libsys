@@ -109,6 +109,7 @@ pub const fn to_errno(e: crate::error::Error) -> i32 {
         crate::error::Error::ReadOnly => 30, // EROFS
         crate::error::Error::Corrupt => 117, // EUCLEAN
         crate::error::Error::Busy => 16, // EBUSY
+        crate::error::Error::BadFd => 9, // EBADF
         crate::error::Error::Unknown(e) => e,
     }
 }
@@ -138,6 +139,7 @@ pub const fn from_errno(e: i32) -> crate::error::Error {
         30 => crate::error::Error::ReadOnly, // EROFS
         117 => crate::error::Error::Corrupt, // EUCLEAN
         16 => crate::error::Error::Busy, // EBUSY
+        9 => crate::error::Error::BadFd, // EBADF
         other => crate::error::Error::Unknown(other),
     }
 }

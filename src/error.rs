@@ -58,6 +58,10 @@ pub enum Error {
     Corrupt,
     /// 资源忙：目标被某项活动状态占用，**重试不会自愈**。
     Busy,
+    /// **坏文件描述符**（EBADF）：`fd` 不存在，或该 fd 的**打开方向**不支持本次操作
+    /// （对只读 fd 写、对只写 fd 读）。与 `PermissionDenied`（节点权限，EACCES）不同：
+    /// 这是「这个 fd 本身不适用于本次操作」，换 fd 才行。
+    BadFd,
     /// 未知错误码（内核返回了 libsys 未识别的 errno）。
     Unknown(i32),
 }
@@ -102,6 +106,7 @@ impl fmt::Display for Error {
             Error::ReadOnly => f.write_str("read-only file system"),
             Error::Corrupt => f.write_str("filesystem structure corrupt"),
             Error::Busy => f.write_str("resource busy"),
+            Error::BadFd => f.write_str("bad file descriptor"),
             Error::Unknown(_e) => f.write_str("unknown error"),
         }
     }
