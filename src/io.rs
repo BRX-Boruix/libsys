@@ -421,6 +421,9 @@ pub struct DirEntry {
     pub name: String,
     pub node_type: String,
     pub size: u64,
+    /// **文件序号**（POSIX `readdir` 的 `d_ino`；登记项④）。
+    /// 真值与 `stat` 的 `st_ino` 同源（内核 `INode::stable_id`）。
+    pub ino: u64,
 }
 
 /// `open(path, flags, perm)`：打开或创建文件/流，返回句柄（fd）。
@@ -1040,11 +1043,14 @@ pub fn parse_dir_entries(text: &str) -> Result<Vec<DirEntry>, Error> {
         let mut name = String::new();
         let mut node_type = String::new();
         let mut size = 0u64;
+        let mut ino = 0u64;
         for (key, val) in &fields {
             match (key.as_str(), val) {
                 ("name", crate::json::JsonValue::String(s)) => name = s.clone(),
                 ("type", crate::json::JsonValue::String(s)) => node_type = s.clone(),
                 ("size", crate::json::JsonValue::Number(n)) => size = n.parse::<u64>().unwrap_or(0),
+                // 登记项④：ino 缺失按 0（「无身份」）——不编造。
+                ("ino", crate::json::JsonValue::Number(n)) => ino = n.parse::<u64>().unwrap_or(0),
                 _ => {}
             }
         }
@@ -1053,6 +1059,7 @@ pub fn parse_dir_entries(text: &str) -> Result<Vec<DirEntry>, Error> {
                 name,
                 node_type,
                 size,
+                ino,
             });
         }
     }
