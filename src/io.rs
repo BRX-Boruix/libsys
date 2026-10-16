@@ -627,6 +627,17 @@ pub fn mkdir(path: &str, perm: Permissions) -> Result<(), Error> {
     .map(|_| ())
 }
 
+/// `lseek(fd, offset, whence)`：调整**打开文件描述**的读写位置，返回新位置（登记项⑨）。
+///
+/// `whence` 用 POSIX 值：0 = SEEK_SET、1 = SEEK_CUR、2 = SEEK_END（与内核 wire 一致）。
+/// 位置由内核的 `OpenHandle` 持有（`Arc<AtomicU64>`），故 `dup2` 出来的 fd 与原来那个
+/// **共享同一位置**，且 `fork` 后父子也共享——这正是 POSIX 的「同一个打开文件描述」。
+///
+/// 不可定位的 fd（管道端）⇒ `IllegalSeek`（用户态映射 ESPIPE），且**不改变任何状态**。
+pub fn lseek(fd: u64, offset: i64, whence: u64) -> Result<u64, Error> {
+    crate::syscall::call(SYS_STREAM_SEEK, [fd, offset as u64, whence, 0, 0, 0])
+}
+
 /// `unlink(path)`：删除**非目录**的目录项（POSIX unlink）。
 ///
 /// **类型判定由内核删除原语内建**（语义忠实性审查登记项⑤）：模式 = `FileOnly`，

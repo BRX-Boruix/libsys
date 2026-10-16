@@ -96,6 +96,7 @@ pub use io::{
     read_nonblocking,
     // getty 清积压（consoled）：**消费式**非阻塞读（NONBLOCK 无 PEEK）。
     read_nonblocking_take,
+    lseek,
     read_to_end, remove, rename, rmdir, stat, unlink, write,
 };
 // A2-6 / ADR-040 §3.5.1 G4：显式 ACE 通道的用户态封装与 wire 镜像。

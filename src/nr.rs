@@ -104,6 +104,11 @@ pub const SYS_STREAM_DUP: u32 = crate::abi_generated::SYS_STREAM_DUP;
 /// `a1` = fd、`a2` = 命令字（见下方 `FLOCK_CMD_*`）。冲突返回 `Busy`（**不阻塞**）。
 /// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_LOCK` 同值、注释互指。
 pub const SYS_STREAM_LOCK: u32 = crate::abi_generated::SYS_STREAM_LOCK;
+/// `SYS_STREAM_SEEK`：调整**打开文件描述**的位置（语义忠实性审查登记项⑨）。
+/// `a1` = fd、`a2` = offset（有符号，按位透传）、`a3` = whence（0/1/2，POSIX 值）。
+/// 返回新位置；不可定位的 fd ⇒ `IllegalSeek`（用户态映射 ESPIPE），且不改变任何状态。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_STREAM_SEEK` 同值。
+pub const SYS_STREAM_SEEK: u32 = crate::abi_generated::SYS_STREAM_SEEK;
 
 /// `SYS_STREAM_LOCK` 的 `a2` 命令字：取共享锁。双侧镜像（S13）：与内核
 /// `kernel::syscall::FLOCK_CMD_SHARED` 同值、注释互指。
