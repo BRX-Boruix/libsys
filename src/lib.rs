@@ -42,7 +42,7 @@ pub mod event;
 pub use event::{CONSOLES_DIR_PREFIX, CONSOLE_PATH};
 // ABI token：**只有系统约定**（`PROGRAM_DIR` / `THIRD_PARTY_SUBDIR` / mkimg 的默认卷标）。
 // 部署事实（卷标、有几块盘、3p 在哪块盘上）**不导出常量**——由 `volume::search_path()` 运行期发现。
-pub use abi_generated::{DATA_VOLUME_LABEL, PROGRAM_DIR, THIRD_PARTY_SUBDIR};
+pub use abi_generated::PROGRAM_DIR;
 pub mod json;
 pub mod nr;
 pub mod signal;
@@ -136,10 +136,7 @@ pub use sync::{sync_create, sync_delete, sync_wait, sync_wake};
 
 pub use mem::query as memory_query;
 
-pub use volume::{
-    DeviceEventInfo, ProbeStatus, device_probe, find_volume_file, mounted_volumes, next_device_event,
-    next_device_event_wait, search_path, volume_list, volume_mount, volume_unmount, volumes_with_subdir,
-};
+pub use volume::{DeviceEventInfo, ProbeStatus, device_probe, next_device_event, next_device_event_wait, volume_list, volume_mount, volume_unmount};
 
 pub use driver::{
     driver_claim, driver_dma_alloc, driver_dma_free, driver_dma_phys, driver_irq_wait,
