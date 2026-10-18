@@ -27,17 +27,74 @@ fn path_cstr(path: &str) -> Result<[u8; 256], Error> {
     Ok(buf)
 }
 
+/// 把 `envp` 打包成内核期望的形态（`char *const envp[]`）。
+///
+/// 内核读的是**指针数组**，数组里每个指针指向一条 **NUL 结尾** 的串；而调用方传的是
+/// 不含 NUL 的切片。故这里自己补 NUL，并让存放区活到 syscall 返回——`EnvPack` 必须由
+/// 调用方持有（`ptr()` 返回的是存放区内部地址，存放区被释放后即失效）。
+///
+/// 指针数组为空时 `ptr()` 返回 0：那是内核的「没有显式环境」语义（零回归路径）。
+struct EnvPack {
+    ptrs: alloc::vec::Vec<u64>,
+    /// 只用来持有存放区；地址经 `ptrs` 交付。
+    _store: alloc::vec::Vec<u8>,
+}
+
+impl EnvPack {
+    fn build(envp: &[&[u8]]) -> Result<Self, Error> {
+        let mut store: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+        let mut offs: alloc::vec::Vec<usize> = alloc::vec::Vec::new();
+        for e in envp {
+            offs.push(store.len());
+            store.extend_from_slice(e);
+            store.push(0);
+        }
+        // 基址必须在**全部 push 之后**取：Vec 增长会搬家。
+        let base = store.as_ptr() as u64;
+        let mut ptrs: alloc::vec::Vec<u64> = alloc::vec::Vec::new();
+        for o in offs {
+            ptrs.push(base + o as u64);
+        }
+        Ok(Self {
+            ptrs,
+            _store: store,
+        })
+    }
+    fn ptr(&self) -> u64 {
+        if self.ptrs.is_empty() {
+            0
+        } else {
+            self.ptrs.as_ptr() as u64
+        }
+    }
+    fn count(&self) -> u64 {
+        self.ptrs.len() as u64
+    }
+}
+
 /// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/programs/shell.elf`）加载并运行新进程。
 pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
+    exec_path_env(path, cmd, &[])
+}
+
+/// `exec_path_env(path, cmd, envp)`：同 [`exec_path`]，但**显式传递环境**（3P4-2b）。
+///
+/// `envp` 是 `KEY=VALUE` 切片列表（**不含 NUL**，本层补）。`PATH`/`PWD` 是内核权威
+/// 单源（ADR-028）：出现在 `envp` 里会被内核**拒绝**（`EINVAL`），本层**不替你滤掉**——
+/// 那会让"我传了 PATH 却没生效"变成静默行为。调用方须自行剔除（`libc/src/exec.rs` 即如此）。
+///
+/// `envp` 为空 ⇒ 与 [`exec_path`] 完全等价（内核只给权威引导环境）。
+pub fn exec_path_env(path: &str, cmd: &[u8], envp: &[&[u8]]) -> Result<u64, Error> {
     let buf = path_cstr(path)?;
+    let pack = EnvPack::build(envp)?;
     crate::syscall::call(
         SYS_TASK_SPAWN,
         [
             buf.as_ptr() as u64,
             cmd.as_ptr() as u64,
             cmd.len() as u64,
-            0,
-            0,
+            pack.ptr(),
+            pack.count(),
             0,
         ],
     )
@@ -52,15 +109,27 @@ pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
 /// 与 [`exec_path`] 的分工是「同一进程换映像」对「造新进程」：两者 ABI 同形，语义
 /// 不可互换——`exec_path` 返回新 pid 而调用者继续跑，本函数成功即不再返回。
 pub fn exec_replace(path: &str, cmd: &[u8]) -> Result<core::convert::Infallible, Error> {
+    exec_replace_env(path, cmd, &[])
+}
+
+/// `exec_replace_env(path, cmd, envp)`：同 [`exec_replace`]，但**显式传递环境**（3P4-2b）。
+///
+/// `envp` 的形态与保留键规则见 [`exec_path_env`]。
+pub fn exec_replace_env(
+    path: &str,
+    cmd: &[u8],
+    envp: &[&[u8]],
+) -> Result<core::convert::Infallible, Error> {
     let buf = path_cstr(path)?;
+    let pack = EnvPack::build(envp)?;
     let _ = crate::syscall::call(
         SYS_TASK_EXEC,
         [
             buf.as_ptr() as u64,
             cmd.as_ptr() as u64,
             cmd.len() as u64,
-            0,
-            0,
+            pack.ptr(),
+            pack.count(),
             0,
         ],
     )?;

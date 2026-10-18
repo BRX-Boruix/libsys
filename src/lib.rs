@@ -110,7 +110,8 @@ pub use mem::{
 pub use pipe::{pipe_create, pipe_create_cloexec};
 pub use power::{power_off, reboot};
 pub use process::{
-    PsEntry, WAIT_ANY, WaitResult, derive, derive_inherit, exec, exec_path, exec_replace, exit,
+    PsEntry, WAIT_ANY, WaitResult, derive, derive_inherit, exec, exec_path, exec_path_env,
+    exec_replace, exec_replace_env, exit,
     JobLine, getpid, gettid, job_depth, job_lines, job_roots, job_subtree, kill, pid_of_name,
     pid_of_name_alive, ps, ps_list, waitpid, waitpid_any, waitpid_any_timeout, yield_now,
 };
