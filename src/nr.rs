@@ -173,6 +173,14 @@ pub const MEMQ_USER: u64 = 1 << 1;
 pub const MEMQ_WRITABLE: u64 = 1 << 2;
 
 // ---------- 3. TASK Domain (0x30) ----------
+/// `task_exec(path_ptr, args_ptr, args_len) -> 不返回`：用新映像**替换当前进程**
+/// （3P4-12）。成功时内核不再返回本进程——映像已换、由 syscall 尾部 iretq 进新入口；
+/// 失败时返回 `-errno`，调用方的旧映像继续运行。
+///
+/// TASK 域第 0 号动词（`0x30`）：该域 1..15 已被既有动词占满，0 是唯一空槽；
+/// 与 `SYS_TASK_SPAWN`（造新进程）语义正交，故不复用 spawn 的子动作编码。
+/// 双侧镜像（S13）：与内核 `kernel::syscall::SYS_TASK_EXEC` 同值、注释互指。
+pub const SYS_TASK_EXEC: u32 = crate::abi_generated::SYS_TASK_EXEC;
 /// `task_spawn(path_ptr, args_ptr, args_len) -> pid`：加载 ELF 镜像为新进程执行。
 pub const SYS_TASK_SPAWN: u32 = crate::abi_generated::SYS_TASK_SPAWN;
 /// `task_wait(target_pid, timeout_ns) -> status`：等待任务退出或睡眠/让出。

@@ -5,7 +5,7 @@ use crate::nr::{
     DERIVE_FLAGS_NONE, GROUPS_SET_CLEAR, GROUPS_SET_REPLACE, GROUPS_SET_RESERVED_NONE,
     IDENTITY_SET_RESERVED_NONE, SYS_TASK_DERIVE, SYS_TASK_EXIT, SYS_TASK_GETPID, SYS_TASK_GETTID,
     NICE_BIAS, NICE_GET, NICE_SET, SYS_TASK_GROUPS_GET, SYS_TASK_GROUPS_SET, SYS_TASK_NICE, SYS_TASK_IDENTITY_QUERY, SYS_TASK_IDENTITY_SET,
-    SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT,
+    SYS_TASK_EXEC, SYS_TASK_SIGNAL, SYS_TASK_SPAWN, SYS_TASK_WAIT,
 };
 
 /// `exec(prog, cmd)`：加载程序（可为内建索引或路径）为新进程（PID 2 等）并运行，返回新进程 pid。
@@ -16,19 +16,24 @@ pub fn exec(prog: u64, cmd: &[u8]) -> Result<u64, Error> {
     )
 }
 
-/// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/programs/shell.elf`）加载并运行新进程。
-pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
-    let mut null_terminated = [0u8; 256];
+/// 把路径拷进栈上 NUL 结尾缓冲（内核按 C 串解析路径指针）。
+fn path_cstr(path: &str) -> Result<[u8; 256], Error> {
+    let mut buf = [0u8; 256];
     if path.len() >= 255 {
         return Err(Error::OutOfRange);
     }
-    null_terminated[..path.len()].copy_from_slice(path.as_bytes());
-    null_terminated[path.len()] = 0;
+    buf[..path.len()].copy_from_slice(path.as_bytes());
+    buf[path.len()] = 0;
+    Ok(buf)
+}
 
+/// `exec_path(path, cmd)`：直接从 VFS 路径（如 `/programs/shell.elf`）加载并运行新进程。
+pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
+    let buf = path_cstr(path)?;
     crate::syscall::call(
         SYS_TASK_SPAWN,
         [
-            null_terminated.as_ptr() as u64,
+            buf.as_ptr() as u64,
             cmd.as_ptr() as u64,
             cmd.len() as u64,
             0,
@@ -36,6 +41,32 @@ pub fn exec_path(path: &str, cmd: &[u8]) -> Result<u64, Error> {
             0,
         ],
     )
+}
+
+/// `exec_replace(path, cmd)`：用新映像**替换当前进程**（3P4-12 / POSIX exec 语义）。
+///
+/// 成功时**不返回**：内核换掉本进程的映像并直接从新入口继续，本函数永不返回。
+/// 失败时返回 `Err`，调用方的旧映像**原样继续运行**——内核保证这一点：新地址空间
+/// 先建好、最后一步才换，故失败路径不触碰调用者。
+///
+/// 与 [`exec_path`] 的分工是「同一进程换映像」对「造新进程」：两者 ABI 同形，语义
+/// 不可互换——`exec_path` 返回新 pid 而调用者继续跑，本函数成功即不再返回。
+pub fn exec_replace(path: &str, cmd: &[u8]) -> Result<core::convert::Infallible, Error> {
+    let buf = path_cstr(path)?;
+    let _ = crate::syscall::call(
+        SYS_TASK_EXEC,
+        [
+            buf.as_ptr() as u64,
+            cmd.as_ptr() as u64,
+            cmd.len() as u64,
+            0,
+            0,
+            0,
+        ],
+    )?;
+    // 内核 exec 的成功路径不返回（映像已换，syscall 尾部 iretq 进新入口）。走到这里
+    // 说明内核违反了该契约——如实报错，绝不当成功返回。
+    Err(Error::InvalidParam)
 }
 
 /// 进程快照条目。
