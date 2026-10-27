@@ -46,6 +46,67 @@ pub unsafe fn auxv<'a>(argc: isize, argv: *const *const u8) -> Option<&'a [(u64,
     }
 }
 
+/// 动态链接所需的五个槽（阶段 5 / 3P5-1，取值与 Linux 一致）。
+///
+/// 它们由内核**只在本镜像要求解释器时**写入（静态程序的 auxv 与本模块历史形态逐字一致，
+/// 零影响）。解释器据此知道：给谁重定位（`AT_PHDR`/`AT_PHNUM`）、跳哪去（`AT_ENTRY`）、
+/// 它自己装在哪（`AT_BASE` = 0 表示 ET_EXEC 解释器，没有基址可报）。
+pub const AT_PHDR: u64 = 3;
+pub const AT_PHENT: u64 = 4;
+pub const AT_PHNUM: u64 = 5;
+pub const AT_BASE: u64 = 7;
+pub const AT_ENTRY: u64 = 9;
+
+/// 解释器启动时从 auxv 读到的那一份**转交契约**。
+///
+/// 五者缺一不可：少 `AT_PHDR` 就找不到程序头（无法知道要重定位什么），少 `AT_ENTRY`
+/// 就不知道该跳到哪。故本结构**不做部分填充**——任一项缺席即整体 `None`，
+/// 由调用方如实退回"非解释器模式"（S09：宁可不做，不做半个）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InterpAux {
+    /// 可执行文件的程序头表在用户地址空间里的 VA。
+    pub phdr: u64,
+    /// 单个程序头条目的字节数。
+    pub phent: u64,
+    /// 程序头条数。
+    pub phnum: u64,
+    /// 可执行文件入口（解释器做完重定位后跳这里）。
+    pub entry: u64,
+    /// 解释器自己的装载基址；0 = ET_EXEC 解释器（无基址可报）。
+    pub base: u64,
+}
+
+/// 读取转交契约（只在"本进程是被内核当解释器装载起来的"时有值）。
+///
+/// # Safety
+/// 同 auxv。
+#[inline]
+pub unsafe fn interp_aux(argc: isize, argv: *const *const u8) -> Option<InterpAux> {
+    let table = auxv(argc, argv)?;
+    let mut phdr = None;
+    let mut phent = None;
+    let mut phnum = None;
+    let mut entry = None;
+    let mut base = None;
+    for (t, v) in table {
+        match *t {
+            AT_PHDR => phdr = Some(*v),
+            AT_PHENT => phent = Some(*v),
+            AT_PHNUM => phnum = Some(*v),
+            AT_ENTRY => entry = Some(*v),
+            AT_BASE => base = Some(*v),
+            _ => {}
+        }
+    }
+    // 五项齐备才算数：缺任何一项都说明内核没按解释器路径装载本进程（或契约被破坏）。
+    Some(InterpAux {
+        phdr: phdr?,
+        phent: phent?,
+        phnum: phnum?,
+        entry: entry?,
+        base: base?,
+    })
+}
 /// 取 AT_EXECFN：本进程的**可执行文件名**（**不是** argv[0]——后者是整条命令行）。
 ///
 /// # Safety
@@ -120,6 +181,47 @@ mod tests {
         assert_eq!(unsafe { auxv(1, argv) }.map(|t| t.len()), Some(0));
     }
 
+    /// 五项齐备才给出转交契约；缺任何一项即 `None`（不做部分填充）。
+    #[test]
+    fn interp_aux_requires_all_five_entries() {
+        let full = [
+            (AT_PHDR, 0x40_0040),
+            (AT_PHENT, 56),
+            (AT_PHNUM, 6),
+            (AT_ENTRY, 0x40_1250),
+            (AT_BASE, 0x0020_0000_0000),
+        ];
+        let words = build(1, 0x1000, &[], &full);
+        let argv = unsafe { words.as_ptr().add(1) };
+        let got = unsafe { interp_aux(1, argv) };
+        assert_eq!(
+            got,
+            Some(InterpAux {
+                phdr: 0x40_0040,
+                phent: 56,
+                phnum: 6,
+                entry: 0x40_1250,
+                base: 0x0020_0000_0000,
+            })
+        );
+        // 少任意一项都必须整体缺席——半个契约比没有更危险（解释器会拿 0 当地址用）。
+        for drop in 0..full.len() {
+            let mut partial: Vec<(u64, u64)> = full.to_vec();
+            partial.remove(drop);
+            let w = build(1, 0x1000, &[], &partial);
+            let a = unsafe { w.as_ptr().add(1) };
+            assert_eq!(unsafe { interp_aux(1, a) }, None, "缺第 {} 项时不得给出契约", drop);
+        }
+    }
+
+    /// 静态程序（只有 AT_EXECFN）：没有转交契约，`None`——解释器据此走普通模式。
+    #[test]
+    fn interp_aux_absent_for_static_programs() {
+        let name: &[u8] = b"prog\0";
+        let words = build(1, 0x1000, &[], &[(AT_EXECFN, name.as_ptr() as u64)]);
+        let argv = unsafe { words.as_ptr().add(1) };
+        assert_eq!(unsafe { interp_aux(1, argv) }, None);
+    }
     #[test]
     fn auxv_returns_none_when_unterminated() {
         let mut words: Vec<*const u8> = Vec::new();
